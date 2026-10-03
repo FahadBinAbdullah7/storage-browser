@@ -132,7 +132,7 @@ const listings = new Map()
 const CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)) // ' ' .. '~'
 const below = (s) => s.slice(0, -1) + String.fromCharCode(s.charCodeAt(s.length - 1) - 1) + '\u{10ffff}'
 const byteCmp = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
-const LIST_PARALLEL = 96
+const LIST_PARALLEL = 48
 
 function semaphore(n) {
   let used = 0

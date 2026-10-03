@@ -82,9 +82,10 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const allowed = useMemo(() => (conn.folders || '').split('\n').map((x) => x.trim().replace(/^\/+/, '')).filter(Boolean).map((x) => (x.endsWith('/') ? x : x + '/')), [conn.folders])
   const outsideAllowed = (p: string) => allowed.length > 0 && !allowed.some((f) => p.startsWith(f))
 
-  // Folder listing: the main process reads the folder in many parallel pieces and sends each finished page
-  // (a sorted run) straight here. Pages are merged into two sorted lists (folders, files) and shown at once for
-  // the first page, then at most once a second or two, so even a 300,000-file folder stays smooth.
+  // Folder listing. The main process reads the folder in many parallel pieces and sends each finished page (a sorted
+  // run) here. What was known before (memory, then the copy saved on disk) is shown at once and is never replaced by a
+  // smaller partial result: new findings are merged in, and only the finished listing replaces it. Leaving a folder
+  // half-way still saves what was found, so the next visit starts from that.
   const stopListing = useRef<(() => void) | null>(null)
   const listSeq = useRef(0)
   const load = useCallback(async () => {
@@ -97,11 +98,35 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       return
     }
     const key = `${conn.id}|${bucket}|${prefix}`
-    if (!cache.current.has(key)) setLoading(true)
+    const mem = cache.current.get(key)
+    let base: { folders: Folder[]; files: FileItem[] } | null = mem ? { folders: mem.folders, files: mem.files } : null
+    if (!base) setLoading(true)
     const lid = `l${++listSeq.current}`
-    const accF: Folder[] = [], accFi: FileItem[] = []
-    let lastPaint = 0, firstSeen = false, stale = false, timer: ReturnType<typeof setTimeout> | undefined
-    const publish = () => { clearTimeout(timer); timer = undefined; setFolders(accF.slice()); setFiles(accFi.slice()); lastPaint = Date.now() }
+    const freshF: Folder[] = [], freshFi: FileItem[] = []
+    let lastPaint = 0, lastSave = 0, firstSeen = false, timer: ReturnType<typeof setTimeout> | undefined
+    // Two sorted folder lists -> one sorted list without repeats.
+    const merge = (a: Folder[], b: Folder[]) => {
+      const out: Folder[] = []
+      let i = 0, j = 0
+      while (i < a.length || j < b.length) {
+        if (j >= b.length || (i < a.length && a[i].prefix < b[j].prefix)) out.push(a[i++])
+        else if (i >= a.length || b[j].prefix < a[i].prefix) out.push(b[j++])
+        else { out.push(b[j]); i++; j++ }
+      }
+      return out
+    }
+    const view = () => ({
+      folders: base ? merge(base.folders, freshF) : freshF.slice(),
+      files: base && freshFi.length < base.files.length ? base.files : freshFi.slice(),
+    })
+    const publish = () => { clearTimeout(timer); timer = undefined; const v = view(); setFolders(v.folders); setFiles(v.files); lastPaint = Date.now() }
+    const persist = () => {
+      lastSave = Date.now()
+      if (!freshF.length && !freshFi.length) return
+      const v = view()
+      cache.current.set(key, { folders: v.folders, files: v.files.length <= 50000 ? v.files : v.files.slice(0, 3000), next: null })
+      window.api.obj.cacheSet(conn.id, bucket, prefix, { folders: v.folders, files: v.files.slice(0, 3000) })
+    }
     // Each run covers a contiguous stretch of names, so one binary search places it.
     const insert = <T,>(arr: T[], run: T[], keyOf: (x: T) => string) => {
       if (!run.length) return
@@ -115,43 +140,43 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     const off = window.api.onListing((m) => {
       if (m.id !== lid || id !== reqId.current) return
       if (m.error) { setError(m.error); toast(m.error, 'bad') }
-      insert(accF, m.folders, (x) => x.prefix)
-      insert(accFi, m.files, (x) => x.key)
+      insert(freshF, m.folders, (x) => x.prefix)
+      insert(freshFi, m.files, (x) => x.key)
       if (!firstSeen && (m.folders.length || m.files.length || m.done)) {
         firstSeen = true
-        setLoading(false); setSel(new Set())
+        setLoading(false)
+        if (!base) setSel(new Set())
         // A bucket opened by typing its name worked: remember it so it is listed next time.
         if (buckets && !buckets.some((b) => b.name === bucket)) {
           setBuckets((l) => [...(l || []), { name: bucket }])
           const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
           window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
         }
-        if (!stale) publish()
+        publish()
       }
       if (m.done) {
         off(); stopListing.current = null
+        if (!m.error) base = null // the finished listing replaces what was known before
         publish(); setLoadingMore(false); setLoading(false)
-        if (!m.error) {
-          if (accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
-          window.api.obj.cacheSet(conn.id, bucket, prefix, { folders: accF, files: accFi.slice(0, 3000) })
-        }
+        if (!m.error) persist()
         return
       }
-      if (stale) return
       setLoadingMore(true)
-      const gap = accF.length + accFi.length > 50000 ? 3000 : 700
+      const gap = freshF.length + freshFi.length > 50000 ? 3000 : 700
       if (Date.now() - lastPaint > gap) publish()
       else if (!timer) timer = setTimeout(publish, gap)
+      if (Date.now() - lastSave > 4000) persist()
     })
-    stopListing.current = () => { off(); clearTimeout(timer); window.api.obj.listCancel(lid); stopListing.current = null }
-    // The listing saved on this computer appears at once; the fresh one replaces it when complete (no flicker in between).
-    if (!cache.current.has(key)) {
+    stopListing.current = () => { off(); clearTimeout(timer); persist(); window.api.obj.listCancel(lid); stopListing.current = null }
+    if (!base) {
+      // Nothing in memory: the copy saved on disk appears at once while the fresh listing runs.
       window.api.obj.cacheGet(conn.id, bucket, prefix).then((c) => {
         if (!c.ok || !c.data || firstSeen || id !== reqId.current) return
-        stale = true; setLoadingMore(true)
+        base = { folders: c.data.folders, files: c.data.files }
         setFolders(c.data.folders); setFiles(c.data.files); setLoading(false); setSel(new Set())
       }).catch(() => {})
     }
+    setLoadingMore(true)
     const r = await window.api.obj.listStream(conn.id, bucket, prefix, lid)
     if (!r.ok) { setError(r.error); setLoading(false); setLoadingMore(false); off() }
   }, [bucket, prefix, conn.id, allowed, buckets])
