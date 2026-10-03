@@ -31,8 +31,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [preview, setPreview] = useState<FileItem | null>(null)
   const [info, setInfo] = useState(false)
   const [clip, setClip] = useState<{ keys: string[]; cut: boolean } | null>(null)
-  const [deep, setDeep] = useState(false)
-  const [deepRes, setDeepRes] = useState<FileItem[] | null>(null)
+  const [deep, setDeep] = useState(true)
+  const [deepRes, setDeepRes] = useState<{ files: FileItem[]; folders: Folder[] } | null>(null)
   const [hoverDir, setHoverDir] = useState('')
   const filterRef = useRef<HTMLInputElement>(null)
   const [linkFor, setLinkFor] = useState<string | null>(null)
@@ -83,7 +83,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     setLoading(true)
     const t = setTimeout(async () => {
       const r = await guard(window.api.obj.search(conn.id, bucket, prefix, filter.trim()))
-      if (live) { setDeepRes(r ?? []); setLoading(false) }
+      if (live) { setDeepRes(r ?? { files: [], folders: [] }); setLoading(false) }
     }, 350)
     return () => { live = false; clearTimeout(t) }
   }, [deep, filter, bucket, prefix])
@@ -100,8 +100,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       const v = sort.by === 'name' ? a.name.localeCompare(b.name, undefined, { numeric: true }) : sort.by === 'size' ? a.size - b.size : a.date.localeCompare(b.date)
       return v * sort.dir
     }
-    const pool = deepRes ?? files
-    const fo = (deepRes ? [] : folders).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }))
+    const pool = deepRes ? deepRes.files : files
+    const fo = (deepRes ? deepRes.folders : folders).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }))
     const fi = pool.filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }))
     return [...fo.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), ...fi.sort(cmp)]
   }, [folders, files, deepRes, filter, sort])
@@ -112,7 +112,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const hasFolder = selKeys.some((k) => k.endsWith('/'))
   const oneFile = selKeys.length === 1 && !selKeys[0].endsWith('/')
   const previewable = entries.filter((e) => e.type === 'file')
-  const fileOf = (k: string) => (deepRes ?? files).find((x) => x.key === k)
+  const fileOf = (k: string) => (deepRes ? deepRes.files : files).find((x) => x.key === k)
   const totalSize = files.reduce((n, f) => n + f.size, 0)
 
   const select = (e: React.MouseEvent, i: number) => {
@@ -125,7 +125,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     lastIdx.current = i
   }
 
-  const openEntry = (e: Entry) => (e.type === 'folder' ? setPrefix(e.key) : setPreview(fileOf(e.key) || null))
+  const openEntry = (e: Entry) => (e.type === 'folder' ? (setFilter(''), setPrefix(e.key)) : setPreview(fileOf(e.key) || null))
 
   const copyLink = async (key: string) => {
     if (!publicBase) { setLinkFor(key); return }
@@ -323,8 +323,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           <a onClick={() => setPrefix('')}><Icon name="bucket" size={14} /> {bucket}</a>
           {crumbs.map((c, i) => <span key={i}><Icon name="chevR" size={12} className="muted" /><a onClick={() => setPrefix(crumbs.slice(0, i + 1).join('/') + '/')}>{c}</a></span>)}
         </div>
-        <div className="search-box"><Icon name="search" size={14} /><input ref={filterRef} placeholder={deep ? 'Search all subfolders…' : 'Filter this folder…'} value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
-        <button className={'chip-btn' + (deep ? ' on' : '')} title="Search inside all subfolders" onClick={() => setDeep((v) => !v)}>Deep</button>
+        <div className="search-box"><Icon name="search" size={14} /><input ref={filterRef} placeholder={deep ? 'Search folders & files everywhere here…' : 'Filter this folder…'} value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+        <button className={'chip-btn' + (deep ? ' on' : '')} title="Search folders and files inside all subfolders" onClick={() => setDeep((v) => !v)}>Deep</button>
         <div className="seg">
           <button className={view === 'list' ? 'on' : ''} title="List" onClick={() => { setView('list'); lsSet('view', 'list') }}><Icon name="list" /></button>
           <button className={view === 'grid' ? 'on' : ''} title="Grid" onClick={() => { setView('grid'); lsSet('view', 'grid') }}><Icon name="grid" /></button>

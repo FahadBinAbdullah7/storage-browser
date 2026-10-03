@@ -156,21 +156,30 @@ async function setMeta(c, bucket, key, m) {
 
 async function createBucket(c, name) { await client(c).send(new CreateBucketCommand({ Bucket: name })) }
 
-// Recursive name search under a prefix (capped so huge buckets stay responsive).
+// Recursive search under a prefix: matches file names and folder names at any depth
+// (capped so huge buckets stay responsive).
 async function search(c, bucket, prefix, q) {
   const needle = q.toLowerCase()
-  const out = []
+  const files = []
+  const dirs = new Set()
   let token, scanned = 0
   do {
     const r = await client(c).send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }))
     for (const o of r.Contents || []) {
-      if (o.Key.endsWith('/')) continue
-      if (o.Key.toLowerCase().includes(needle)) out.push({ key: o.Key, name: o.Key, size: o.Size, lastModified: o.LastModified?.toISOString() })
+      const parts = o.Key.slice(prefix.length).split('/')
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (parts[i].toLowerCase().includes(needle)) dirs.add(prefix + parts.slice(0, i + 1).join('/') + '/')
+      }
+      const leaf = parts[parts.length - 1]
+      if (leaf && leaf.toLowerCase().includes(needle)) files.push({ key: o.Key, name: o.Key, size: o.Size, lastModified: o.LastModified?.toISOString() })
     }
     scanned += (r.Contents || []).length
-    token = r.IsTruncated && out.length < 300 && scanned < 50000 ? r.NextContinuationToken : undefined
+    token = r.IsTruncated && files.length + dirs.size < 300 && scanned < 100000 ? r.NextContinuationToken : undefined
   } while (token)
-  return out
+  return {
+    files,
+    folders: [...dirs].sort().map((d) => ({ prefix: d, name: d.slice(prefix.length).replace(/\/$/, '') })),
+  }
 }
 
 async function stats(c, bucket, prefix) {

@@ -19,6 +19,10 @@ All versions and release notes: <https://github.com/FahadBinAbdullah7/storage-br
 
 Not sure which Mac you have? Apple menu → **About This Mac**. If it says *Chip: Apple M…* pick **arm64**; if it says *Processor: Intel…* pick **x64**.
 
+> **Download not starting in your browser?** Open the [release page](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest) and click the file under *Assets*, or use Terminal:
+> `curl -L -o ~/Downloads/Cloudpeek.dmg https://github.com/FahadBinAbdullah7/storage-browser/releases/latest/download/Cloudpeek-Mac-arm64.dmg`
+> The files are about 130 MB, so the download can take a minute.
+
 ### First launch (one-time warning)
 
 The app is **unsigned**, so your system blocks it the first time. This is expected.
@@ -107,7 +111,7 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 - **Download** files or entire folders
 - **New folder, rename, duplicate, and delete files** — for safety, **folders and buckets can never be deleted** from Cloudpeek
 - **Cut / copy / paste** and **drag onto a folder** to move
-- **Deep search** across all subfolders
+- **Deep search** (on by default): type 2+ letters to find **folders and files** at any depth under the current folder
 - **Searchable bucket list** to find a bucket fast, and **create new buckets** (buckets cannot be deleted)
 
 **Links and sharing**
