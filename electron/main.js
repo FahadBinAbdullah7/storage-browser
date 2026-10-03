@@ -122,9 +122,13 @@ h('d1:query', (id, db, sql) => d1.query(C(id), db, sql))
 // ---- Google Drive
 h('g:signIn', async (input) => {
   const prev = input.id ? store.get(input.id) : {}
-  const r = await google.signIn({ clientId: input.clientId || prev.clientId, clientSecret: input.clientSecret || prev.clientSecret })
+  // A Client ID typed for one Google connection is reused for the next, so it is only entered once.
+  const other = store.listPublic().filter((x) => x.type === 'gdrive' && x.clientId && x.id !== input.id).map((x) => store.get(x.id))[0] || {}
+  const clientId = input.clientId || prev.clientId || other.clientId || ''
+  const clientSecret = input.clientSecret || prev.clientSecret || other.clientSecret || ''
+  const r = await google.signIn({ clientId, clientSecret })
   const id = input.id || crypto.randomUUID()
-  store.save({ id, type: 'gdrive', name: input.name || prev.name || r.email, email: r.email, refreshToken: r.refreshToken, clientId: input.clientId || prev.clientId || '', clientSecret: input.clientSecret || '' })
+  store.save({ id, type: 'gdrive', name: input.name || prev.name || r.email, email: r.email, refreshToken: r.refreshToken, clientId, clientSecret })
   return id
 })
 h('g:drives', (id) => google.drives(C(id)))

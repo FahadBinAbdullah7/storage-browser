@@ -101,23 +101,23 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 
 ### Google Drive
 
-Click **＋ → Drive → Sign in with Google**. Your browser opens Google's own sign-in page; you type your Google email and password **there** (Cloudpeek never sees the password) and approve access. Cloudpeek stores only a permission token, encrypted on your computer. My Drive and shared drives both appear, with browsing, search, upload, download, preview (video/audio/images/PDF), rename, new folder, and Copy link. Deleting moves **files** to the Drive trash; folders can't be deleted from the app.
+Click **＋ → Drive → Sign in with Google**. Your browser opens **Google's own sign-in page**; you type your Google email and password **there** (Cloudpeek never sees the password) and approve access. Cloudpeek keeps only a permission token, encrypted on your computer, and shows **your own** Drive and the shared drives you can reach — whichever organisation your account belongs to. Nothing about any organisation is built into the app.
 
-**One-time setup for whoever publishes the app** (users don't do this): Google requires every app that signs users in to have a *Client ID*.
+You can browse, search the whole drive by name, upload files and folders, download, preview (video, audio, images, PDF), rename, create folders and copy links. Deleting moves **files** to the Drive trash; folders can't be deleted from the app.
 
-1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a project (for example "Cloudpeek").
+**Why a Client ID?** Google does not let any app sign users in without a *Client ID* — there is no way to connect with just an email and a code (Google removed the copy-and-paste code flow in 2022). The Client ID is not a password and not tied to one person: it just identifies the app to Google. **Create it once per organisation** (an admin does this; everyone else only signs in):
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) with an admin account and create a project (for example "Cloudpeek").
 2. **APIs & Services → Library** → enable **Google Drive API**.
-3. **APIs & Services → OAuth consent screen**: choose **Internal** if your organisation uses Google Workspace (any account in your domain can sign in, no Google review needed). Otherwise choose **External** and add your team's addresses as *test users*.
+3. **APIs & Services → OAuth consent screen**:
+   - **Internal** (Google Workspace): any account in *your* organisation can sign in, no Google review needed. Recommended for company use.
+   - **External**: add each person as a *test user*, or complete Google's app verification to allow anyone.
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID** and **Client secret**.
-5. Put them in `electron/oauth.json`:
-   ```json
-   { "google": { "clientId": "123…apps.googleusercontent.com", "clientSecret": "GOCSPX-…" } }
-   ```
-   then release a new version. (Google treats the secret of a desktop app as non-confidential. You can also skip this file and let a user paste a Client ID under **Advanced** in the sign-in dialog.)
+5. In Cloudpeek: **＋ → Drive**, click **Sign in with Google**, paste the Client ID and secret in the box that appears, then sign in. Cloudpeek remembers them for your next Google connection on that computer. (To pre-fill them for everyone you distribute the app to, put them in `electron/oauth.json` before building.)
 
 Docs: [Google OAuth for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app) · [Drive API](https://developers.google.com/drive/api/guides/about-sdk)
 
-> Drive's full-access scope is a *restricted* scope. An **External** app used by more than 100 people must pass Google's verification; an **Internal** app does not.
+> Drive's full-access scope is *restricted*: a public **External** app for many organisations needs Google's verification. That is why the per-organisation Client ID above is the simplest route.
 
 ---
 
@@ -179,7 +179,7 @@ Right-click any item for the full menu.
 
 | Problem | Fix |
 | --- | --- |
-| Buckets don't show up automatically | Cloudflare only lets **account-wide** keys list buckets; keys limited to specific buckets get a 403 (see [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/)). Cloudpeek then tries the names in `electron/config.js` (`KNOWN_BUCKETS`) and remembers any bucket you open by name. |
+| Buckets don't show up automatically | Cloudflare only lets **account-wide** keys list buckets; keys limited to specific buckets get a 403 (see [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/)). Type the bucket name(s) in the connection (comma-separated), or type a name on the bucket screen and press Enter; Cloudpeek remembers it for that connection. |
 | *Access Denied* when listing buckets, or the bucket looks empty | Your key may be limited to one bucket or to certain folders. Edit the connection: type the **bucket name(s)** (comma-separated) and, if needed, the **Allowed folders** (one per line). You can also type a bucket name on the bucket screen and press Enter. |
 | R2 connection fails | Check the Account ID, and that the key is an **R2 API token** (not a Cloudflare Global API key). |
 | Videos won't play | Some formats (e.g. `.mkv`, some `.mov`) aren't supported by the built-in player. Use MP4 (H.264) or WebM, or download the file. |

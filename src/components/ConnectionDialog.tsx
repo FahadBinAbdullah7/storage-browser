@@ -46,7 +46,8 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
       onSaved(id)
     } catch (e) {
       const m = (e as Error).message
-      throw new Error(m.includes('NO_CLIENT_ID') ? "Google sign-in isn't set up in this build yet. Open “Advanced” and paste a Google Client ID, or ask your admin (see the README: Google Drive setup)." : m)
+      if (m.includes('NO_CLIENT_ID')) setAdv(true)
+      throw new Error(m.includes('NO_CLIENT_ID') ? 'First paste your organisation’s Google Client ID below (a one-time step — your admin creates it; see the README, “Google Drive”). After that, anyone can sign in with their own Google account.' : m)
     }
   })
 
@@ -73,18 +74,18 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <label>Account ID<input value={f.accountId} onChange={set('accountId')} /></label>
           <label>Access Key ID<input value={f.accessKeyId} onChange={set('accessKeyId')} /></label>
           <label>Secret Access Key{keep}<input type="password" value={f.secretAccessKey} onChange={set('secretAccessKey')} /></label>
-          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. 10ms-videos, 10mscdn" /></label>
+          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. my-bucket, my-other-bucket" /></label>
           <label>Allowed folders (optional) — only if the key is limited to certain folders, one per line<textarea rows={2} value={f.folders} onChange={(e) => setF({ ...f, folders: e.target.value })} placeholder={'Skills\nK12/OB_27'} /></label>
-          <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.10minuteschool.com" /></label>
+          <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.example.com" /></label>
         </>}
         {type === 's3' && <>
           <label>Access Key ID<input value={f.accessKeyId} onChange={set('accessKeyId')} /></label>
           <label>Secret Access Key{keep}<input type="password" value={f.secretAccessKey} onChange={set('secretAccessKey')} /></label>
           <label>Region<input value={f.region} onChange={set('region')} /></label>
           <label>Custom endpoint (optional — MinIO, Wasabi, etc.)<input value={f.endpoint} onChange={set('endpoint')} placeholder="https://…" /></label>
-          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. 10ms-videos, 10mscdn" /></label>
+          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. my-bucket, my-other-bucket" /></label>
           <label>Allowed folders (optional) — only if the key is limited to certain folders, one per line<textarea rows={2} value={f.folders} onChange={(e) => setF({ ...f, folders: e.target.value })} placeholder={'Skills\nK12/OB_27'} /></label>
-          <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.10minuteschool.com" /></label>
+          <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.example.com" /></label>
         </>}
         {type === 'd1' && <>
           <label>Account ID<input value={f.accountId} onChange={set('accountId')} /></label>
@@ -96,7 +97,7 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <p className="muted small">Cloudpeek opens Google's own sign-in page in your browser. Your Google password is typed there, never into Cloudpeek, and Cloudpeek only keeps a permission token on this computer.</p>
           {initial.email && <div className="note ok">Signed in as {initial.email}</div>}
           <button className="primary" disabled={busy} onClick={signIn}>{busy ? 'Waiting for Google…' : initial.id ? 'Sign in again with Google' : 'Sign in with Google'}</button>
-          <button className="ghost sm" onClick={() => setAdv((v) => !v)}>{adv ? 'Hide' : 'Advanced: use my own Google Client ID'}</button>
+          <button className="ghost sm" onClick={() => setAdv((v) => !v)}>{adv ? 'Hide' : 'Google Client ID (needed once per organisation)'}</button>
           {adv && <>
             <label>Client ID<input value={f.clientId} onChange={set('clientId')} placeholder="123…apps.googleusercontent.com" /></label>
             <label>Client secret{keep}<input type="password" value={f.clientSecret} onChange={set('clientSecret')} /></label>
