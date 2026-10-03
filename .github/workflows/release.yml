@@ -42,6 +42,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Optional: bake the app's Google Client ID into the build from repository secrets, so users
+      # only click "Sign in with Google". Skipped when the secrets are not set.
+      - name: Add Google Client ID
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_ID" ]; then
+            node -e "require('fs').writeFileSync('electron/oauth.json', JSON.stringify({google:{clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET||''}}))"
+            echo "Google Client ID added to this build"
+          fi
       - run: npm run build
       - run: npx electron-builder ${{ matrix.args }} --publish always
         env:
