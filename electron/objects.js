@@ -9,6 +9,7 @@ const fs = require('fs')
 const path = require('path')
 const { pipeline } = require('stream/promises')
 
+const { KNOWN_BUCKETS } = require('./config')
 const clients = new Map()
 
 function endpointFor(c) {
@@ -39,13 +40,22 @@ async function listBuckets(c) {
   // list buckets at all, so these are always offered in addition to whatever the account lists.
   const extra = (c.defaultBucket || '').split(/[,\s]+/).filter(Boolean)
   let list = []
+  let listErr = null
   try {
     const r = await client(c).send(new ListBucketsCommand({}))
     list = (r.Buckets || []).map((b) => ({ name: b.Name, created: b.CreationDate?.toISOString() }))
   } catch (e) {
-    if (!extra.length) throw e
+    listErr = e
   }
   for (const n of extra) if (!list.some((b) => b.name === n)) list.push({ name: n })
+  // Keys limited to specific buckets can't list them (403). Probe the known names and keep
+  // the ones this key can open, so those buckets still show up on their own.
+  if (!list.length) {
+    await Promise.all(KNOWN_BUCKETS.map(async (n) => {
+      try { await client(c).send(new ListObjectsV2Command({ Bucket: n, MaxKeys: 1 })); list.push({ name: n }) } catch { /* no access */ }
+    }))
+  }
+  if (!list.length && listErr) throw listErr
   return list
 }
 

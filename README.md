@@ -158,6 +158,7 @@ Right-click any item for the full menu.
 
 | Problem | Fix |
 | --- | --- |
+| Buckets don't show up automatically | Cloudflare only lets **account-wide** keys list buckets; keys limited to specific buckets get a 403 (see [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/)). Cloudpeek then tries the names in `electron/config.js` (`KNOWN_BUCKETS`) and remembers any bucket you open by name. |
 | *Access Denied* when listing buckets, or the bucket looks empty | Your key may be limited to one bucket or to certain folders. Edit the connection: type the **bucket name(s)** (comma-separated) and, if needed, the **Allowed folders** (one per line). You can also type a bucket name on the bucket screen and press Enter. |
 | R2 connection fails | Check the Account ID, and that the key is an **R2 API token** (not a Cloudflare Global API key). |
 | Videos won't play | Some formats (e.g. `.mkv`, some `.mov`) aren't supported by the built-in player. Use MP4 (H.264) or WebM, or download the file. |

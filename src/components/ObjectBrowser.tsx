@@ -88,6 +88,12 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       setLoading(false)
       if (!r) { setLoadingMore(false); return }
       const f0 = first
+      // A bucket opened by typing its name worked: remember it so it is listed next time.
+      if (f0 && buckets && !buckets.some((b) => b.name === bucket)) {
+        setBuckets((l) => [...(l || []), { name: bucket }])
+        const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
+        window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
+      }
       setFolders((f) => (f0 ? r.folders : [...f, ...r.folders]))
       setFiles((f) => (f0 ? r.files : [...f, ...r.files]))
       if (f0) setSel(new Set())
@@ -98,7 +104,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       setLoadingMore(!!token && pages < 60)
     } while (token && pages < 60)
     setLoadingMore(false)
-  }, [bucket, prefix, conn.id, next, allowed])
+  }, [bucket, prefix, conn.id, next, allowed, buckets])
 
   useEffect(() => { setFolders([]); setFiles([]); load(false) }, [bucket, prefix]) // eslint-disable-line react-hooks/exhaustive-deps
 
