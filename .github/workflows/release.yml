@@ -42,6 +42,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Optional: default bucket names for keys that cannot list buckets (repository secret DEFAULT_BUCKETS).
+      - name: Add default bucket names
+        shell: bash
+        env:
+          DEFAULT_BUCKETS: ${{ secrets.DEFAULT_BUCKETS }}
+        run: |
+          if [ -n "$DEFAULT_BUCKETS" ]; then
+            node -e "require('fs').writeFileSync('electron/config.local.json', JSON.stringify({buckets: process.env.DEFAULT_BUCKETS.split(/[,\\s]+/).filter(Boolean)}))"
+            echo "Default bucket names added to this build"
+          fi
       - run: npm run build
       - run: npx electron-builder ${{ matrix.args }} --publish always
         env:

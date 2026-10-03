@@ -48,7 +48,7 @@ const { KNOWN_BUCKETS } = require('./config')
 const clients = new Map()
 
 function endpointFor(c) {
-  if (c.type === 'r2') return c.endpoint || `https://${c.accountId}.r2.cloudflarestorage.com`
+  if (c.type === 'r2') return `https://${c.accountId}.r2.cloudflarestorage.com`
   return c.endpoint || undefined
 }
 
