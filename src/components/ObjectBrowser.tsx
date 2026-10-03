@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Conn, FileItem, Folder, Transfer } from '../types'
+import type { Conn, FileItem, Folder, SearchProgress, Transfer } from '../types'
 import { call, fmtDate, fmtSize, ICON_NAME, kindOf } from '../util'
 import Icon, { type IconName } from './Icon'
 import Preview from './Preview'
@@ -31,7 +31,11 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [preview, setPreview] = useState<FileItem | null>(null)
   const [info, setInfo] = useState(false)
   const [clip, setClip] = useState<{ keys: string[]; cut: boolean } | null>(null)
-  const [deep, setDeep] = useState(true)
+  const [scope, setScope] = useState<'here' | 'sub' | 'bucket'>('sub')
+  const [search, setSearch] = useState<{ scanned: number; done: boolean; capped: boolean } | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const searchSeq = useRef(0)
+  const deep = scope !== 'here'
   const [deepRes, setDeepRes] = useState<{ files: FileItem[]; folders: Folder[] } | null>(null)
   const [hoverDir, setHoverDir] = useState('')
   const filterRef = useRef<HTMLInputElement>(null)
@@ -61,32 +65,51 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     })()
   }, [conn.id])
 
+  // Loads the first page right away, then keeps fetching the rest in the background so every folder shows up.
   const load = useCallback(async (more = false) => {
     if (!bucket) return
     const id = ++reqId.current
     setLoading(true)
-    const r = await guard(window.api.obj.list(conn.id, bucket, prefix, more ? next : null))
-    if (id !== reqId.current) return
-    setLoading(false)
-    if (!r) return
-    setFolders((f) => (more ? [...f, ...r.folders] : r.folders))
-    setFiles((f) => (more ? [...f, ...r.files] : r.files))
-    setNext(r.nextToken)
-    if (!more) setSel(new Set())
+    let token: string | null = more ? next : null
+    let first = !more
+    let pages = 0
+    do {
+      const r = await guard(window.api.obj.list(conn.id, bucket, prefix, token))
+      if (id !== reqId.current) return
+      setLoading(false)
+      if (!r) { setLoadingMore(false); return }
+      const f0 = first
+      setFolders((f) => (f0 ? r.folders : [...f, ...r.folders]))
+      setFiles((f) => (f0 ? r.files : [...f, ...r.files]))
+      if (f0) setSel(new Set())
+      first = false
+      token = r.nextToken
+      setNext(token)
+      pages++
+      setLoadingMore(!!token && pages < 60)
+    } while (token && pages < 60)
+    setLoadingMore(false)
   }, [bucket, prefix, conn.id, next])
 
   useEffect(() => { setFolders([]); setFiles([]); load(false) }, [bucket, prefix]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Streaming search: results appear as they are found; typing again cancels the previous scan.
   useEffect(() => {
-    if (!deep || filter.trim().length < 2 || !bucket) { setDeepRes(null); return }
-    let live = true
-    setLoading(true)
-    const t = setTimeout(async () => {
-      const r = await guard(window.api.obj.search(conn.id, bucket, prefix, filter.trim()))
-      if (live) { setDeepRes(r ?? { files: [], folders: [] }); setLoading(false) }
-    }, 350)
-    return () => { live = false; clearTimeout(t) }
-  }, [deep, filter, bucket, prefix])
+    const q = filter.trim()
+    if (!deep || q.length < 2 || !bucket) { setDeepRes(null); setSearch(null); return }
+    const sid = `s${++searchSeq.current}`
+    const root = scope === 'bucket' ? '' : prefix
+    setDeepRes({ files: [], folders: [] }); setSearch({ scanned: 0, done: false, capped: false })
+    const off = window.api.onSearch((r: SearchProgress) => {
+      if (r.id !== sid) return
+      setDeepRes({ files: r.files, folders: r.folders })
+      setSearch({ scanned: r.scanned, done: r.done, capped: r.capped })
+    })
+    const t = setTimeout(() => {
+      guard(window.api.obj.search(conn.id, bucket, root, q, sid)).then(() => setSearch((x) => x && { ...x, done: true }))
+    }, 250)
+    return () => { clearTimeout(t); off(); window.api.obj.searchCancel(sid) }
+  }, [scope, filter, bucket, prefix])
 
   useEffect(() => window.api.onTransfer((t) => {
     setTransfers((m) => ({ ...m, [t.id]: t }))
@@ -246,7 +269,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       else if ((e.metaKey || e.ctrlKey) && e.key === 'd') { e.preventDefault(); duplicate() }
       else if ((e.metaKey || e.ctrlKey) && e.key === 'i') { e.preventDefault(); setInfo((v) => !v) }
       else if ((e.metaKey || e.ctrlKey) && e.key === 'f') { e.preventDefault(); filterRef.current?.focus() }
-      else if (e.key === 'Escape') { setSel(new Set()); setMenu(null) }
+      else if (e.key === 'Escape') { setSel(new Set()); setMenu(null); setFilter('') }
       else if (e.key === 'Delete' || (e.key === 'Backspace' && e.metaKey)) del()
       else if (e.key === 'Enter' && selKeys.length === 1) { const en = entries.find((x) => x.key === selKeys[0]); en && openEntry(en) }
       else if (e.key === 'Backspace' && prefix) setPrefix(crumbs.slice(0, -1).map((c) => c + '/').join(''))
@@ -323,8 +346,6 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           <a onClick={() => setPrefix('')}><Icon name="bucket" size={14} /> {bucket}</a>
           {crumbs.map((c, i) => <span key={i}><Icon name="chevR" size={12} className="muted" /><a onClick={() => setPrefix(crumbs.slice(0, i + 1).join('/') + '/')}>{c}</a></span>)}
         </div>
-        <div className="search-box"><Icon name="search" size={14} /><input ref={filterRef} placeholder={deep ? 'Search folders & files everywhere here…' : 'Filter this folder…'} value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
-        <button className={'chip-btn' + (deep ? ' on' : '')} title="Search folders and files inside all subfolders" onClick={() => setDeep((v) => !v)}>Deep</button>
         <div className="seg">
           <button className={view === 'list' ? 'on' : ''} title="List" onClick={() => { setView('list'); lsSet('view', 'list') }}><Icon name="list" /></button>
           <button className={view === 'grid' ? 'on' : ''} title="Grid" onClick={() => { setView('grid'); lsSet('view', 'grid') }}><Icon name="grid" /></button>
@@ -333,6 +354,25 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
         <button className="icon-btn" title="Refresh" onClick={() => load(false)}><Icon name="refresh" className={loading ? 'spin' : ''} /></button>
       </div>
 
+      <div className="searchbar">
+        <div className="search-big">
+          <Icon name="search" size={16} />
+          <input ref={filterRef} placeholder={scope === 'here' ? 'Filter files and folders in this folder…' : scope === 'sub' ? 'Search folders & files in this folder and everything inside…' : `Search the whole “${bucket}” bucket…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          {filter && <button className="icon-btn sm" title="Clear (Esc)" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
+        </div>
+        <div className="seg labeled" title="Where to search">
+          <button className={scope === 'here' ? 'on' : ''} onClick={() => setScope('here')}>This folder</button>
+          <button className={scope === 'sub' ? 'on' : ''} onClick={() => setScope('sub')}>Include subfolders</button>
+          <button className={scope === 'bucket' ? 'on' : ''} onClick={() => setScope('bucket')}>Whole bucket</button>
+        </div>
+      </div>
+      {search && (
+        <div className="search-status">
+          {!search.done ? <><div className="spinner sm" /> Searching… {search.scanned.toLocaleString()} items checked · {(deepRes?.files.length || 0) + (deepRes?.folders.length || 0)} found</>
+            : <>{(deepRes?.files.length || 0) + (deepRes?.folders.length || 0)} result(s){search.capped ? ' (showing the first 500 — type more letters to narrow down)' : ''} · {search.scanned.toLocaleString()} items checked</>}
+          {!search.done && <button className="ghost sm" onClick={() => { setFilter('') }}>Stop</button>}
+        </div>
+      )}
       <div className="actions">
         <button className="primary" onClick={() => guard(window.api.obj.pickUpload(conn.id, bucket, prefix, false))}><Icon name="upload" /> Upload</button>
         <button onClick={() => guard(window.api.obj.pickUpload(conn.id, bucket, prefix, true))}><Icon name="folder" /> Upload folder</button>
@@ -355,7 +395,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       <div className="content" onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
         {loading && !entries.length && <div className="skel-list">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skel" style={{ animationDelay: i * 60 + 'ms' }} />)}</div>}
 
-        {!loading && !entries.length && (
+        {!loading && !entries.length && (!search || search.done) && (
           <div className="empty-state">
             <div className="drop-ico"><Icon name="upload" size={34} /></div>
             <h3>{filter ? 'No matches' : 'Nothing here yet'}</h3>
@@ -402,7 +442,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       </div>
 
       <div className="status muted">
-        <span>{folders.length} folder(s), {files.length} file(s){files.length ? ` · ${fmtSize(totalSize)}` : ''}{next ? ' · more available' : ''}</span>
+        <span>{loadingMore && <span className="spinner sm inl" />}{folders.length} folder(s), {files.length} file(s){files.length ? ` · ${fmtSize(totalSize)}` : ''}{loadingMore ? ' · loading more…' : next ? ' · more available' : ''}</span>
         <span className="hint">Double-click to open · Right-click for more · Drop files to upload</span>
       </div>
 

@@ -111,7 +111,7 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 - **Download** files or entire folders
 - **New folder, rename, duplicate, and delete files** — for safety, **folders and buckets can never be deleted** from Cloudpeek
 - **Cut / copy / paste** and **drag onto a folder** to move
-- **Deep search** (on by default): type 2+ letters to find **folders and files** at any depth under the current folder
+- **Search bar** right under the toolbar: type 2+ letters and pick **This folder**, **Include subfolders** or **Whole bucket**. It finds **folders and files** at any depth, scans many folders in parallel, and shows results live as it goes (Esc clears it)
 - **Searchable bucket list** to find a bucket fast, and **create new buckets** (buckets cannot be deleted)
 
 **Links and sharing**

@@ -26,7 +26,8 @@ contextBridge.exposeInMainWorld('api', {
     setMeta: (id, b, k, m) => invoke('obj:setMeta', id, b, k, m),
     copy: (id, b, f, t) => invoke('obj:copy', id, b, f, t),
     createBucket: (id, n) => invoke('obj:createBucket', id, n),
-    search: (id, b, p, q) => invoke('obj:search', id, b, p, q),
+    search: (id, b, p, q, sid) => invoke('obj:search', id, b, p, q, sid),
+    searchCancel: (sid) => invoke('obj:searchCancel', sid),
     stats: (id, b, p) => invoke('obj:stats', id, b, p),
     mkdir: (id, b, p) => invoke('obj:mkdir', id, b, p),
     remove: (id, b, keys) => invoke('obj:remove', id, b, keys),
@@ -44,6 +45,7 @@ contextBridge.exposeInMainWorld('api', {
   copy: (text) => invoke('clipboard:write', text),
   openExternal: (u) => invoke('shell:open', u),
   onTransfer: on('transfer'),
+  onSearch: on('search'),
   onUpdate: on('update'),
   update: { download: () => invoke('update:download'), install: () => invoke('update:install') },
 })

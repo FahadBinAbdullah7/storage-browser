@@ -212,3 +212,11 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .bucket-list{flex:1;overflow:auto}
 .bucket-list tbody tr{cursor:pointer}
 .search-box.wide{width:auto;max-width:420px;margin:6px 14px 10px}
+
+.searchbar{display:flex;gap:10px;align-items:center;padding:0 14px 8px}
+.search-big{flex:1;display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 10px 0 14px;color:var(--muted);transition:border-color .15s,box-shadow .15s}
+.search-big:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,108,255,.22);color:var(--accent)}
+.search-big input{border:0;background:transparent;box-shadow:none!important;padding:11px 0;font-size:14px;color:var(--text)}
+.seg.labeled button{font-size:12.5px;padding:6px 12px;border-radius:8px}
+.search-status{display:flex;gap:10px;align-items:center;padding:0 16px 8px;color:var(--muted);font-size:12.5px}
+.spinner.inl{display:inline-block;margin-right:8px;vertical-align:-3px}

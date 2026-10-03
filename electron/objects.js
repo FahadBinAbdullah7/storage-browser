@@ -47,7 +47,7 @@ async function listBuckets(c) {
 
 async function list(c, bucket, prefix, token) {
   const r = await client(c).send(new ListObjectsV2Command({
-    Bucket: bucket, Prefix: prefix, Delimiter: '/', ContinuationToken: token || undefined, MaxKeys: 500,
+    Bucket: bucket, Prefix: prefix, Delimiter: '/', ContinuationToken: token || undefined, MaxKeys: 1000,
   }))
   return {
     folders: (r.CommonPrefixes || []).map((p) => ({ prefix: p.Prefix, name: p.Prefix.slice(prefix.length).replace(/\/$/, '') })),
@@ -156,31 +156,69 @@ async function setMeta(c, bucket, key, m) {
 
 async function createBucket(c, name) { await client(c).send(new CreateBucketCommand({ Bucket: name })) }
 
-// Recursive search under a prefix: matches file names and folder names at any depth
-// (capped so huge buckets stay responsive).
-async function search(c, bucket, prefix, q) {
+// Parallel breadth-first search: many folders are listed at once (delimiter "/" keeps each
+// request small), results stream back through emit() so the UI fills in while it works.
+const searches = new Map()
+const MAX_HITS = 500
+const CONCURRENCY = 16
+
+async function search(c, bucket, prefix, q, searchId, emit) {
+  const state = { cancelled: false }
+  searches.set(searchId, state)
   const needle = q.toLowerCase()
   const files = []
-  const dirs = new Set()
-  let token, scanned = 0
-  do {
-    const r = await client(c).send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }))
-    for (const o of r.Contents || []) {
-      const parts = o.Key.slice(prefix.length).split('/')
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (parts[i].toLowerCase().includes(needle)) dirs.add(prefix + parts.slice(0, i + 1).join('/') + '/')
-      }
-      const leaf = parts[parts.length - 1]
-      if (leaf && leaf.toLowerCase().includes(needle)) files.push({ key: o.Key, name: o.Key, size: o.Size, lastModified: o.LastModified?.toISOString() })
-    }
-    scanned += (r.Contents || []).length
-    token = r.IsTruncated && files.length + dirs.size < 300 && scanned < 100000 ? r.NextContinuationToken : undefined
-  } while (token)
-  return {
-    files,
-    folders: [...dirs].sort().map((d) => ({ prefix: d, name: d.slice(prefix.length).replace(/\/$/, '') })),
+  const folders = []
+  const queue = [prefix]
+  let active = 0, scanned = 0, firstError = null, lastEmit = 0
+  const full = () => files.length + folders.length >= MAX_HITS
+  const stop = () => state.cancelled || full()
+  const progress = (done) => {
+    const now = Date.now()
+    if (!done && now - lastEmit < 250) return
+    lastEmit = now
+    emit({ id: searchId, files: [...files], folders: [...folders], scanned, done, capped: full() })
   }
+
+  async function scan(pfx) {
+    let token
+    do {
+      if (stop()) return
+      const r = await client(c).send(new ListObjectsV2Command({ Bucket: bucket, Prefix: pfx, Delimiter: '/', ContinuationToken: token }))
+      for (const o of r.Contents || []) {
+        if (o.Key === pfx || o.Key.endsWith('/')) continue
+        if (o.Key.slice(pfx.length).toLowerCase().includes(needle)) {
+          files.push({ key: o.Key, name: o.Key.slice(prefix.length), size: o.Size, lastModified: o.LastModified?.toISOString() })
+        }
+      }
+      for (const p of r.CommonPrefixes || []) {
+        if (p.Prefix.slice(pfx.length, -1).toLowerCase().includes(needle)) {
+          folders.push({ prefix: p.Prefix, name: p.Prefix.slice(prefix.length).replace(/\/$/, '') })
+        }
+        queue.push(p.Prefix)
+      }
+      scanned += (r.Contents || []).length + (r.CommonPrefixes || []).length
+      progress(false)
+      token = r.IsTruncated ? r.NextContinuationToken : undefined
+    } while (token)
+  }
+
+  await new Promise((resolve) => {
+    const pump = () => {
+      while (active < CONCURRENCY && queue.length && !stop()) {
+        active++
+        scan(queue.shift()).catch((e) => { firstError = firstError || e }).finally(() => { active--; pump() })
+      }
+      if (!active && (!queue.length || stop())) resolve()
+    }
+    pump()
+  })
+  searches.delete(searchId)
+  if (firstError && !files.length && !folders.length) throw firstError
+  progress(true)
+  return true
 }
+
+const cancelSearch = (id) => { const s = searches.get(id); if (s) s.cancelled = true }
 
 async function stats(c, bucket, prefix) {
   const all = await listAll(c, bucket, prefix)
@@ -243,4 +281,4 @@ async function downloadTo(c, bucket, key, dest, onProgress) {
   }
 }
 
-module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, stats, upload, downloadTo }
+module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, cancelSearch, stats, upload, downloadTo }

@@ -45,7 +45,8 @@ declare global {
         setMeta(id: string, b: string, k: string, m: { contentType?: string; cacheControl?: string }): R<void>
         copy(id: string, b: string, from: string, to: string): R<void>
         createBucket(id: string, n: string): R<void>
-        search(id: string, b: string, p: string, q: string): R<{ files: FileItem[]; folders: Folder[] }>
+        search(id: string, b: string, p: string, q: string, sid: string): R<boolean>
+        searchCancel(sid: string): R<void>
         stats(id: string, b: string, p: string): R<{ count: number; size: number }>
         mkdir(id: string, b: string, p: string): R<void>
         remove(id: string, b: string, keys: string[]): R<number>
@@ -62,6 +63,7 @@ declare global {
       }
       copy(t: string): R<void>
       openExternal(u: string): R<void>
+      onSearch(cb: (r: SearchProgress) => void): () => void
       onTransfer(cb: (t: Transfer) => void): () => void
       onUpdate(cb: (u: UpdateState) => void): () => void
       update: { download(): R<void>; install(): R<void> }
@@ -72,3 +74,5 @@ declare global {
 export interface D1Result { columns: string[]; rows: Record<string, unknown>[]; meta: Record<string, unknown> }
 
 export interface FullHead { size: number; contentType: string; cacheControl: string; contentDisposition: string; etag?: string; storageClass: string; lastModified?: string; metadata: Record<string, string> }
+
+export interface SearchProgress { id: string; files: FileItem[]; folders: Folder[]; scanned: number; done: boolean; capped: boolean }
