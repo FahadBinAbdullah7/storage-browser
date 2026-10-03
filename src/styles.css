@@ -211,3 +211,7 @@ tbody tr:hover{background:var(--hover)}tbody tr.on{background:var(--sel)}
 tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--accent);outline-offset:-2px}
 .bucket .del{opacity:0;color:var(--bad)}.bucket:hover .del{opacity:1}
 .bucket .del:hover{background:rgba(255,93,108,.14)}
+
+.bucket-list{flex:1;overflow:auto}
+.bucket-list tbody tr{cursor:pointer}
+.search-box.wide{width:auto;max-width:420px;margin:6px 14px 10px}

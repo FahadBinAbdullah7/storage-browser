@@ -78,10 +78,10 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 - **Preview and play** video, audio, images, PDFs and text files; use ← → to move through a folder; Esc to close
 - **Upload** files or whole folders (button or drag and drop) with progress bars
 - **Download** files or entire folders
-- **New folder, rename, duplicate, delete** (folders are deleted with everything inside)
+- **New folder, rename, duplicate, and delete files** — for safety, **folders and buckets can never be deleted** from Cloudpeek
 - **Cut / copy / paste** and **drag onto a folder** to move
 - **Deep search** across all subfolders
-- **Create and delete buckets**
+- **Searchable bucket list** to find a bucket fast, and **create new buckets** (buckets cannot be deleted)
 
 **Links and sharing**
 - **Copy link** gives your permanent **CDN link** (`https://cdn.example.com/folder/file.mp4`) in one click when a CDN domain is set
@@ -101,7 +101,7 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 | --- | --- |
 | Double-click / Enter | Open folder or preview file |
 | Backspace | Go up one folder |
-| Delete | Delete selection |
+| Delete | Delete selected files (folders are protected) |
 | Ctrl/⌘ + A | Select all |
 | Ctrl/⌘ + C / X / V | Copy / cut / paste |
 | Ctrl/⌘ + D | Duplicate |

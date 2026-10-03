@@ -45,7 +45,6 @@ declare global {
         setMeta(id: string, b: string, k: string, m: { contentType?: string; cacheControl?: string }): R<void>
         copy(id: string, b: string, from: string, to: string): R<void>
         createBucket(id: string, n: string): R<void>
-        deleteBucket(id: string, n: string): R<void>
         search(id: string, b: string, p: string, q: string): R<FileItem[]>
         stats(id: string, b: string, p: string): R<{ count: number; size: number }>
         mkdir(id: string, b: string, p: string): R<void>

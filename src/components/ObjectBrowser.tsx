@@ -17,7 +17,8 @@ const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v) } cat
 
 export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChanged(): void }) {
   const toast = useToast()
-  const [buckets, setBuckets] = useState<string[] | null>(null)
+  const [buckets, setBuckets] = useState<{ name: string; created?: string }[] | null>(null)
+  const [bucketQ, setBucketQ] = useState('')
   const [bucket, setBucket] = useState<string | null>(null)
   const [prefix, setPrefix] = useState('')
   const [folders, setFolders] = useState<Folder[]>([])
@@ -55,7 +56,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       const b = await guard(window.api.obj.buckets(conn.id))
       setLoading(false)
       if (!b) return
-      setBuckets(b.map((x) => x.name))
+      setBuckets(b)
       if (b.length === 1) setBucket(b[0].name)
     })()
   }, [conn.id])
@@ -108,6 +109,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const crumbs = prefix.split('/').filter(Boolean)
   const publicBase = (bucket && conn.publicUrls?.[bucket]) || conn.publicBase || undefined
   const selKeys = [...sel]
+  const hasFolder = selKeys.some((k) => k.endsWith('/'))
   const oneFile = selKeys.length === 1 && !selKeys[0].endsWith('/')
   const previewable = entries.filter((e) => e.type === 'file')
   const fileOf = (k: string) => (deepRes ?? files).find((x) => x.key === k)
@@ -202,7 +204,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     },
   })
   const del = async () => {
-    if (!bucket || !selKeys.length || !confirm(`Delete ${selKeys.length} item(s)? Folders are deleted with everything inside.`)) return
+    if (selKeys.some((k) => k.endsWith('/'))) { toast("Folders can't be deleted — select files only", 'bad'); return }
+    if (!bucket || !selKeys.length || !confirm(`Delete ${selKeys.length} file(s)? This can't be undone.`)) return
     if (await guard(window.api.obj.remove(conn.id, bucket, selKeys)) !== undefined) toast('Deleted'); load(false)
   }
   const rename = () => {
@@ -266,20 +269,32 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   if (!bucket) return (
     <div className="browser fade">
       <div className="toolbar"><h2 className="title">{conn.name}</h2><span className="chip">Buckets</span><span className="grow" />
-        <button className="primary" onClick={() => setAsk({ title: 'New bucket', label: 'Bucket name (lowercase letters, numbers, hyphens)', onSubmit: async (v) => { if (v && await guard(window.api.obj.createBucket(conn.id, v)) !== undefined) { toast('Bucket created'); setBuckets((b) => [...(b || []), v]) } } })}><Icon name="plus" /> New bucket</button></div>
-      {loading && <div className="bucket-grid">{[0, 1, 2].map((i) => <div key={i} className="bucket skel" />)}</div>}
+        <button className="primary" onClick={() => setAsk({ title: 'New bucket', label: 'Bucket name (lowercase letters, numbers, hyphens)', onSubmit: async (v) => { if (v && await guard(window.api.obj.createBucket(conn.id, v)) !== undefined) { toast('Bucket created'); setBuckets((b) => [...(b || []), { name: v }]) } } })}><Icon name="plus" /> New bucket</button></div>
+      {loading && <div className="skel-list">{[0, 1, 2, 3].map((i) => <div key={i} className="skel" style={{ animationDelay: i * 60 + 'ms' }} />)}</div>}
       {error && <div className="empty-state"><Icon name="cloud" size={42} /><h3>Couldn't connect</h3><p className="muted">{error}</p><button className="primary" onClick={() => location.reload()}>Retry</button></div>}
-      <div className="bucket-grid">
-        {buckets?.map((b, i) => (
-          <button key={b} className="bucket" style={{ animationDelay: i * 40 + 'ms' }} onClick={() => { setBucket(b); setPrefix('') }}>
-            <span className="b-ico"><Icon name="bucket" size={22} /></span>
-            <span className="b-name">{b}</span>
-            <span className="icon-btn sm del" title="Delete bucket (must be empty)" onClick={(e) => { e.stopPropagation(); if (confirm(`Delete bucket "${b}"? It must be empty.`)) guard(window.api.obj.deleteBucket(conn.id, b)).then((r) => { if (r !== undefined) { toast('Bucket deleted'); setBuckets((l) => (l || []).filter((x) => x !== b)) } }) }}><Icon name="trash" size={14} /></span>
-            <Icon name="chevR" size={16} className="muted" />
-          </button>
-        ))}
-      </div>
-      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets found</h3><p className="muted">Create one in your dashboard, or enter a bucket name in this connection's settings.</p></div>}
+      {buckets && buckets.length > 0 && (() => {
+        const q = bucketQ.trim().toLowerCase()
+        const shown = buckets.filter((x) => x.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        return (
+          <div className="bucket-list fade">
+            <div className="search-box wide"><Icon name="search" size={14} /><input autoFocus placeholder={`Search ${buckets.length} bucket(s)…`} value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && shown.length && (setBucket(shown[0].name), setPrefix(''))} /></div>
+            <table>
+              <thead><tr><th>Bucket</th><th className="date">Created</th><th className="num" /></tr></thead>
+              <tbody>
+                {shown.map((x, i) => (
+                  <tr key={x.name} style={{ animationDelay: Math.min(i, 20) * 12 + 'ms' }} onClick={() => { setBucket(x.name); setPrefix('') }}>
+                    <td><span className="fi folder"><Icon name="bucket" size={18} /></span>{x.name}</td>
+                    <td className="date muted">{x.created ? fmtDate(x.created) : '—'}</td>
+                    <td className="num"><Icon name="chevR" size={15} className="muted" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!shown.length && <div className="empty-state"><Icon name="search" size={38} /><h3>No bucket matches “{bucketQ}”</h3></div>}
+          </div>
+        )
+      })()}
+      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets found</h3><p className="muted">Create one with “New bucket”, or enter a bucket name in this connection's settings.</p></div>}
     </div>
   )
 
@@ -297,7 +312,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     { icon: 'file', label: 'Duplicate', fn: duplicate, hide: selKeys.length !== 1 },
     { icon: 'settings', label: 'Get info', fn: () => setInfo(true), hide: selKeys.length !== 1 },
     { icon: 'edit', label: 'Rename', fn: rename, hide: selKeys.length !== 1 },
-    { icon: 'trash', label: 'Delete', fn: del, danger: true },
+    { icon: 'trash', label: 'Delete', fn: del, danger: true, hide: hasFolder },
   ]
 
   return (
@@ -330,7 +345,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           {oneFile && <button onClick={() => copyLink(selKeys[0])}><Icon name="link" /> Copy link</button>}
           {oneFile && <button className="ghost" onClick={() => setLinkFor(selKeys[0])}><Icon name="clock" /> Signed</button>}
           {selKeys.length === 1 && <button onClick={rename}><Icon name="edit" /> Rename</button>}
-          <button className="danger" onClick={del}><Icon name="trash" /> Delete</button>
+          <button className="danger" disabled={hasFolder} title={hasFolder ? "Folders can't be deleted" : undefined} onClick={del}><Icon name="trash" /> Delete</button>
         </div>
         <span className="grow" />
         <button className={'ghost cdn' + (publicBase ? ' set' : '')} onClick={setPublic} title="Links you copy use this domain"><Icon name="globe" /> {publicBase ? publicBase.replace(/^https?:\/\//, '') : 'Set CDN URL'}</button>

@@ -1,6 +1,6 @@
 const {
   S3Client, ListBucketsCommand, ListObjectsV2Command, GetObjectCommand, HeadObjectCommand,
-  DeleteObjectsCommand, CopyObjectCommand, PutObjectCommand, CreateBucketCommand, DeleteBucketCommand,
+  DeleteObjectsCommand, CopyObjectCommand, PutObjectCommand, CreateBucketCommand,
 } = require('@aws-sdk/client-s3')
 const { Upload } = require('@aws-sdk/lib-storage')
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
@@ -97,7 +97,14 @@ async function mkdir(c, bucket, prefix) {
   await client(c).send(new PutObjectCommand({ Bucket: bucket, Key: prefix.endsWith('/') ? prefix : prefix + '/', Body: '' }))
 }
 
+// Public delete: files only. Folders (and buckets) can never be deleted from the app.
 async function remove(c, bucket, keys) {
+  if (keys.some((k) => k.endsWith('/'))) throw new Error('Folders cannot be deleted. Select files only.')
+  return removeUnchecked(c, bucket, keys)
+}
+
+// Internal: used by rename/move, which delete the old folder prefix after copying.
+async function removeUnchecked(c, bucket, keys) {
   const files = await expand(c, bucket, keys)
   // Folder placeholders ("dir/") are removed too.
   for (const k of keys) if (k.endsWith('/') && !files.some((f) => f.key === k)) files.push({ key: k })
@@ -122,7 +129,7 @@ async function transfer(c, bucket, from, to, del) {
     if (dest === f.key) continue
     await client(c).send(new CopyObjectCommand({ Bucket: bucket, Key: dest, CopySource: srcOf(bucket, f.key) }))
   }
-  if (del && from !== to) await remove(c, bucket, [from])
+  if (del && from !== to) await removeUnchecked(c, bucket, [from])
 }
 const move = (c, bucket, from, to) => transfer(c, bucket, from, to, true)
 const copy = (c, bucket, from, to) => transfer(c, bucket, from, to, false)
@@ -148,7 +155,6 @@ async function setMeta(c, bucket, key, m) {
 }
 
 async function createBucket(c, name) { await client(c).send(new CreateBucketCommand({ Bucket: name })) }
-async function deleteBucket(c, name) { await client(c).send(new DeleteBucketCommand({ Bucket: name })) }
 
 // Recursive name search under a prefix (capped so huge buckets stay responsive).
 async function search(c, bucket, prefix, q) {
@@ -228,4 +234,4 @@ async function downloadTo(c, bucket, key, dest, onProgress) {
   }
 }
 
-module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, deleteBucket, search, stats, upload, downloadTo }
+module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, stats, upload, downloadTo }
