@@ -65,7 +65,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
   // Searches everything below the current folder; results stream in while it works.
   useEffect(() => {
     const q = filter.trim()
-    if (q.length < 2) { setFound(null); setSearch(null); return }
+    if (true || q.length < 2) { setFound(null); setSearch(null); return } // this folder only: no recursive search
     const sid = `n${++seq.current}`
     sidRef.current = sid
     setFound([]); setSearch({ scanned: 0, done: false, capped: false })
@@ -98,7 +98,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
       const local = items.filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()) && (kind === 'all' || (kind === 'folders') === i.isFolder))
       return [...new Map([...local, ...found].map((i) => [i.path, i])).values()]
     }
-    return [...items].filter((i) => kind === 'all' || (kind === 'folders') === i.isFolder)
+    return [...items].filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()) && (kind === 'all' || (kind === 'folders') === i.isFolder))
       .sort((a, b) => Number(b.isFolder) - Number(a.isFolder) || a.name.localeCompare(b.name, undefined, { numeric: true }))
   }, [items, found, filter, kind])
 
@@ -148,7 +148,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
       <div className="searchbar">
         <div className="search-big">
           <Icon name="search" size={16} />
-          <input placeholder={`Search in ${cwd === '/' ? conn.name : cwd} (this folder and everything inside)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input placeholder={`Search in ${cwd === '/' ? conn.name : cwd} (this folder only)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
           {filter && <button className="icon-btn sm" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
         </div>
       </div>

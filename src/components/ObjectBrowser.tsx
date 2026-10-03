@@ -43,7 +43,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const searchSeq = useRef(0)
   const sidRef = useRef('')
   const kind = 'all' as 'all' | 'folders' | 'files' // search always covers folders and files
-  const deep = true
+  const deep = false // search filters only the folder you are in (no recursion into subfolders)
   const [deepRes, setDeepRes] = useState<{ files: FileItem[]; folders: Folder[] } | null>(null)
   const [hoverDir, setHoverDir] = useState('')
   const filterRef = useRef<HTMLInputElement>(null)
@@ -421,7 +421,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       <div className="searchbar">
         <div className="search-big">
           <Icon name="search" size={16} />
-          <input ref={filterRef} placeholder={`Search in ${prefix ? prefix.replace(/\/$/, '') : bucket} (this folder and everything inside)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input ref={filterRef} placeholder={`Search in ${prefix ? prefix.replace(/\/$/, '') : bucket} (this folder only)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
           {filter && <button className="icon-btn sm" title="Clear (Esc)" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
         </div>
       </div>
