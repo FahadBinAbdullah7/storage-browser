@@ -61,7 +61,7 @@ Intel: same commands, but use `Cloudpeek-Mac-x64.dmg` in the first line.
 
 When a new version is out, a banner appears at the top of the app. Click **Update now**, then **Restart**. Nothing downloads or installs without your click.
 
-> Unsigned Mac builds sometimes can't replace themselves. If the update fails, the banner offers **Download manually** — just install the newest DMG over the old app.
+> On Mac, Cloudpeek downloads the new version itself and swaps it in when you click **Restart** (this works for unsigned apps). If anything goes wrong, the banner offers **Download manually** — just install the newest DMG over the old app.
 
 ---
 
