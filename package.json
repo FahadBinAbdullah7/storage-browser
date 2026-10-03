@@ -29,7 +29,7 @@
       {
         "provider": "github",
         "owner": "FahadBinAbdullah7",
-        "repo": "storage-browser", "releaseType": "release"
+        "repo": "storage-browser", "releaseType": "draft"
       }
     ],
     "mac": {

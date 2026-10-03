@@ -221,3 +221,4 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .search-status{display:flex;gap:10px;align-items:center;padding:0 16px 8px;color:var(--muted);font-size:12.5px}
 .spinner.inl{display:inline-block;margin-right:8px;vertical-align:-3px}
 .side-foot{display:flex;justify-content:space-between;align-items:center}
+.muted-w{opacity:.8;font-size:12px}

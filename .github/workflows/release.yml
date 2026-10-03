@@ -22,7 +22,7 @@ jobs:
           for id in $(gh api "repos/$REPO/releases" --paginate --jq ".[] | select(.tag_name==\"$TAG\") | .id"); do
             gh api -X DELETE "repos/$REPO/releases/$id"
           done
-          gh release create "$TAG" --repo "$REPO" --verify-tag --title "Cloudpeek $TAG" --notes "Installers for Windows and macOS. See the README for install steps."
+          gh release create "$TAG" --repo "$REPO" --draft --verify-tag --title "Cloudpeek $TAG" --notes "Installers for Windows and macOS. See the README for install steps."
 
   build:
     needs: prepare
@@ -47,3 +47,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+  # Only make the release visible once every installer and update file is uploaded,
+  # so installed apps never see a half-finished release.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --repo "$REPO" --draft=false --latest
