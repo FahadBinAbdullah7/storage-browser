@@ -24,6 +24,7 @@ export default function App() {
   useEffect(() => {
     reload()
     call(window.api.version()).then(setVersion)
+    call(window.api.update.state()).then((s) => s && setUpdate(s)).catch(() => {})
     return window.api.onUpdate(setUpdate)
   }, [reload])
 
@@ -31,7 +32,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {update && update.state !== 'error' && (
+      {update && (update.state === 'available' || update.state === 'downloading' || update.state === 'ready') && (
         <div className="banner">
           {update.state === 'available' && <>Version {update.version} is available. <button onClick={() => { window.api.update.download() }}>Update now</button></>}
           {update.state === 'downloading' && <>Downloading update… {update.percent}%</>}
@@ -62,7 +63,12 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="side-foot muted">v{version}</div>
+          <div className="side-foot muted">
+            <span>v{version}</span>
+            <button className="ghost sm" disabled={update?.state === 'checking'} onClick={() => window.api.update.check()}>
+              {update?.state === 'checking' ? 'Checking…' : update?.state === 'none' ? 'Up to date ✓' : update?.state === 'available' ? 'Update available' : 'Check for updates'}
+            </button>
+          </div>
         </aside>
         <main className="main">
           <div className="drag top" />

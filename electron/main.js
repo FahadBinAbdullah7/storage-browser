@@ -50,6 +50,8 @@ const h = (ch, fn) => ipcMain.handle(ch, async (_e, ...a) => {
 h('app:version', () => app.getVersion())
 h('clipboard:write', (t) => clipboard.writeText(t))
 h('shell:open', (u) => { if (/^https?:\/\//.test(u)) shell.openExternal(u) })
+h('update:state', () => upd.getState?.() ?? null)
+h('update:check', () => upd.check?.())
 h('update:download', () => upd.download?.())
 h('update:install', () => upd.install?.())
 

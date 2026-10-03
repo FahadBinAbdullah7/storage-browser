@@ -220,3 +220,4 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .seg.labeled button{font-size:12.5px;padding:6px 12px;border-radius:8px}
 .search-status{display:flex;gap:10px;align-items:center;padding:0 16px 8px;color:var(--muted);font-size:12.5px}
 .spinner.inl{display:inline-block;margin-right:8px;vertical-align:-3px}
+.side-foot{display:flex;justify-content:space-between;align-items:center}

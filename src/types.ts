@@ -23,6 +23,8 @@ export interface Transfer {
   loaded: number; total: number; state: 'active' | 'done' | 'error'; error?: string
 }
 export type UpdateState =
+  | { state: 'checking' }
+  | { state: 'none' }
   | { state: 'available'; version: string }
   | { state: 'downloading'; percent: number }
   | { state: 'ready'; version: string }
@@ -67,7 +69,7 @@ declare global {
       onSearch(cb: (r: SearchProgress) => void): () => void
       onTransfer(cb: (t: Transfer) => void): () => void
       onUpdate(cb: (u: UpdateState) => void): () => void
-      update: { download(): R<void>; install(): R<void> }
+      update: { state(): R<UpdateState | null>; check(): R<void>; download(): R<void>; install(): R<void> }
     }
   }
 }

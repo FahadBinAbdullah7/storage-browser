@@ -47,5 +47,5 @@ contextBridge.exposeInMainWorld('api', {
   onTransfer: on('transfer'),
   onSearch: on('search'),
   onUpdate: on('update'),
-  update: { download: () => invoke('update:download'), install: () => invoke('update:install') },
+  update: { state: () => invoke('update:state'), check: () => invoke('update:check'), download: () => invoke('update:download'), install: () => invoke('update:install') },
 })
