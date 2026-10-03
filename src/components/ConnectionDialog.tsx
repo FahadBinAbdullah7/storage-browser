@@ -21,6 +21,7 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
     accountId: initial.accountId || '',
     apiToken: '',
     defaultBucket: initial.defaultBucket || '',
+    folders: initial.folders || '',
     publicBase: initial.publicBase || '',
   })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -58,7 +59,8 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <label>Account ID<input value={f.accountId} onChange={set('accountId')} /></label>
           <label>Access Key ID<input value={f.accessKeyId} onChange={set('accessKeyId')} /></label>
           <label>Secret Access Key{keep}<input type="password" value={f.secretAccessKey} onChange={set('secretAccessKey')} /></label>
-          <label>Bucket (optional — only needed for bucket-scoped tokens)<input value={f.defaultBucket} onChange={set('defaultBucket')} /></label>
+          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. 10ms-videos, 10mscdn" /></label>
+          <label>Allowed folders (optional) — only if the key is limited to certain folders, one per line<textarea rows={2} value={f.folders} onChange={(e) => setF({ ...f, folders: e.target.value })} placeholder={'Skills\nK12/OB_27'} /></label>
           <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.10minuteschool.com" /></label>
         </>}
         {type === 's3' && <>
@@ -66,7 +68,8 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <label>Secret Access Key{keep}<input type="password" value={f.secretAccessKey} onChange={set('secretAccessKey')} /></label>
           <label>Region<input value={f.region} onChange={set('region')} /></label>
           <label>Custom endpoint (optional — MinIO, Wasabi, etc.)<input value={f.endpoint} onChange={set('endpoint')} placeholder="https://…" /></label>
-          <label>Bucket (optional — if your key can't list buckets)<input value={f.defaultBucket} onChange={set('defaultBucket')} /></label>
+          <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. 10ms-videos, 10mscdn" /></label>
+          <label>Allowed folders (optional) — only if the key is limited to certain folders, one per line<textarea rows={2} value={f.folders} onChange={(e) => setF({ ...f, folders: e.target.value })} placeholder={'Skills\nK12/OB_27'} /></label>
           <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.10minuteschool.com" /></label>
         </>}
         {type === 'd1' && <>

@@ -35,14 +35,18 @@ function client(c) {
 }
 
 async function listBuckets(c) {
+  // Names typed into the connection (comma/space separated). Keys limited to one bucket can't
+  // list buckets at all, so these are always offered in addition to whatever the account lists.
+  const extra = (c.defaultBucket || '').split(/[,\s]+/).filter(Boolean)
+  let list = []
   try {
     const r = await client(c).send(new ListBucketsCommand({}))
-    return (r.Buckets || []).map((b) => ({ name: b.Name, created: b.CreationDate?.toISOString() }))
+    list = (r.Buckets || []).map((b) => ({ name: b.Name, created: b.CreationDate?.toISOString() }))
   } catch (e) {
-    // Bucket-scoped tokens can't list buckets; fall back to the one the user typed in.
-    if (c.defaultBucket) return [{ name: c.defaultBucket }]
-    throw e
+    if (!extra.length) throw e
   }
+  for (const n of extra) if (!list.some((b) => b.name === n)) list.push({ name: n })
+  return list
 }
 
 async function list(c, bucket, prefix, token) {

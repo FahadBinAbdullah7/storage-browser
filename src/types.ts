@@ -9,6 +9,7 @@ export interface Conn {
   endpoint?: string
   accountId?: string
   defaultBucket?: string
+  folders?: string
   publicBase?: string
   publicUrls?: Record<string, string>
   has_secretAccessKey?: boolean

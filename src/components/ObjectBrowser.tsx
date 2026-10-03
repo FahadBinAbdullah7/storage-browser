@@ -65,10 +65,19 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     })()
   }, [conn.id])
 
+  // Keys limited to certain folders can't list the bucket root: show only the path leading to them.
+  const allowed = useMemo(() => (conn.folders || '').split('\n').map((x) => x.trim().replace(/^\/+/, '')).filter(Boolean).map((x) => (x.endsWith('/') ? x : x + '/')), [conn.folders])
+  const outsideAllowed = (p: string) => allowed.length > 0 && !allowed.some((f) => p.startsWith(f))
+
   // Loads the first page right away, then keeps fetching the rest in the background so every folder shows up.
   const load = useCallback(async (more = false) => {
     if (!bucket) return
     const id = ++reqId.current
+    if (outsideAllowed(prefix)) {
+      const segs = [...new Set(allowed.filter((f) => f.startsWith(prefix) && f !== prefix).map((f) => f.slice(prefix.length).split('/')[0]))]
+      setFolders(segs.map((n) => ({ prefix: prefix + n + '/', name: n }))); setFiles([]); setNext(null); setLoading(false); setLoadingMore(false); setSel(new Set())
+      return
+    }
     setLoading(true)
     let token: string | null = more ? next : null
     let first = !more
@@ -89,7 +98,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       setLoadingMore(!!token && pages < 60)
     } while (token && pages < 60)
     setLoadingMore(false)
-  }, [bucket, prefix, conn.id, next])
+  }, [bucket, prefix, conn.id, next, allowed])
 
   useEffect(() => { setFolders([]); setFiles([]); load(false) }, [bucket, prefix]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -300,7 +309,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
         const shown = buckets.filter((x) => x.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
         return (
           <div className="bucket-list fade">
-            <div className="search-box wide"><Icon name="search" size={14} /><input autoFocus placeholder={`Search ${buckets.length} bucket(s)…`} value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && shown.length && (setBucket(shown[0].name), setPrefix(''))} /></div>
+            <div className="search-box wide"><Icon name="search" size={14} /><input autoFocus placeholder={`Search ${buckets.length} bucket(s)…`} value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => { if (e.key !== 'Enter') return; if (shown.length) { setBucket(shown[0].name); setPrefix('') } else if (bucketQ.trim()) { setBucket(bucketQ.trim()); setPrefix('') } }} /></div>
             <table>
               <thead><tr><th>Bucket</th><th className="date">Created</th><th className="num" /></tr></thead>
               <tbody>
@@ -313,11 +322,11 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
                 ))}
               </tbody>
             </table>
-            {!shown.length && <div className="empty-state"><Icon name="search" size={38} /><h3>No bucket matches “{bucketQ}”</h3></div>}
+            {!shown.length && <div className="empty-state"><Icon name="search" size={38} /><h3>No bucket matches “{bucketQ}”</h3><p className="muted">Press Enter to try opening a bucket named “{bucketQ.trim()}” anyway.</p></div>}
           </div>
         )
       })()}
-      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets found</h3><p className="muted">Create one with “New bucket”, or enter a bucket name in this connection's settings.</p></div>}
+      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets listed</h3><p className="muted">Keys limited to one bucket can't list buckets. Type the bucket name to open it:</p><div className="search-box wide"><Icon name="bucket" size={14} /><input autoFocus placeholder="bucket name, then Enter" value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && bucketQ.trim()) { setBucket(bucketQ.trim()); setPrefix('') } }} /></div></div>}
     </div>
   )
 
@@ -399,7 +408,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           <div className="empty-state">
             <div className="drop-ico"><Icon name="upload" size={34} /></div>
             <h3>{filter ? 'No matches' : 'Nothing here yet'}</h3>
-            <p className="muted">{filter ? 'Try a different search.' : 'Drag files or folders here to upload, or use the Upload button.'}</p>
+            <p className="muted">{filter ? 'Try a different search.' : prefix === '' ? 'Nothing found at the top of this bucket. If you expected files, check that this is the right bucket, and whether your key is limited to certain folders (edit the connection and add them under “Allowed folders”). You can also drag files here to upload.' : 'Drag files or folders here to upload, or use the Upload button.'}</p>
           </div>
         )}
 

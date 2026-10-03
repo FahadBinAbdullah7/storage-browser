@@ -158,7 +158,7 @@ Right-click any item for the full menu.
 
 | Problem | Fix |
 | --- | --- |
-| *Access Denied* when listing buckets | Your key may be scoped to one bucket. Enter the bucket name in the connection's **Bucket** field. |
+| *Access Denied* when listing buckets, or the bucket looks empty | Your key may be limited to one bucket or to certain folders. Edit the connection: type the **bucket name(s)** (comma-separated) and, if needed, the **Allowed folders** (one per line). You can also type a bucket name on the bucket screen and press Enter. |
 | R2 connection fails | Check the Account ID, and that the key is an **R2 API token** (not a Cloudflare Global API key). |
 | Videos won't play | Some formats (e.g. `.mkv`, some `.mov`) aren't supported by the built-in player. Use MP4 (H.264) or WebM, or download the file. |
 | Copied link says "Access Denied" | The bucket isn't public. Enable a public domain on the bucket, or use **Signed link**. |
