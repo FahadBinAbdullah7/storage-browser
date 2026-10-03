@@ -41,7 +41,7 @@ export default function App() {
       {update?.state === 'error' && (
         <div className="banner err">
           Update failed: {update.message}{' '}
-          <button onClick={() => window.api.openExternal('https://github.com/FahadBinAbdullah7/storage-browser-releases/releases/latest')}>Download manually</button>
+          <button onClick={() => window.api.openExternal('https://github.com/FahadBinAbdullah7/storage-browser/releases/latest')}>Download manually</button>
           <button className="ghost" onClick={() => setUpdate(null)}>Dismiss</button>
         </div>
       )}

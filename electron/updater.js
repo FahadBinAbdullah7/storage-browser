@@ -1,10 +1,10 @@
 const { app, shell } = require('electron')
-const { autoUpdater } = require('electron-updater')
 
-const RELEASES_URL = 'https://github.com/FahadBinAbdullah7/storage-browser-releases/releases/latest'
+const RELEASES_URL = 'https://github.com/FahadBinAbdullah7/storage-browser/releases/latest'
 
 function setup(send) {
   if (!app.isPackaged) return {}
+  const { autoUpdater } = require('electron-updater')
   // Nothing downloads or installs without the user's click.
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
