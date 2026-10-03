@@ -8,6 +8,41 @@ const mime = require('mime-types')
 const fs = require('fs')
 const path = require('path')
 const { pipeline } = require('stream/promises')
+const https = require('https')
+const http = require('http')
+const { NodeHttpHandler } = require('@smithy/node-http-handler')
+
+const MB = 1024 * 1024
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Many warm, reusable connections are the biggest single factor in transfer speed
+// (the SDK default is only 50 sockets and a fresh TLS handshake per burst).
+const requestHandler = new NodeHttpHandler({
+  httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 256 }),
+  httpAgent: new http.Agent({ keepAlive: true, maxSockets: 256 }),
+  connectionTimeout: 15000, socketTimeout: 120000,
+})
+
+// Shared transfer budget: one big file takes 4 of 6 slots (it already uses many connections
+// itself), small files take 1 each, so a folder of small files runs 6 at a time.
+const CAPACITY = 6
+function weighted(capacity) {
+  let used = 0
+  const q = []
+  const pump = () => {
+    while (q.length && used + q[0].w <= capacity) { const t = q.shift(); used += t.w; t.run() }
+  }
+  return (w, fn) => new Promise((resolve, reject) => {
+    q.push({ w, run: () => fn().then(resolve, reject).finally(() => { used -= w; pump() }) })
+    pump()
+  })
+}
+const upSlots = weighted(CAPACITY)
+const downSlots = weighted(CAPACITY)
+const BIG = 32 * MB
+
+// Progress callbacks cross into the UI; keep them to ~5 a second per file.
+const throttle = (fn, ms = 200) => { let last = 0; return (v, force) => { const n = Date.now(); if (force || n - last >= ms) { last = n; fn(v) } } }
 
 const { KNOWN_BUCKETS } = require('./config')
 const clients = new Map()
@@ -30,6 +65,8 @@ function client(c) {
     // R2 and many S3-compatible stores reject the newer default CRC32 checksums.
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
+    requestHandler,
+    maxAttempts: 5,
   })
   clients.set(key, cl)
   return cl
@@ -248,51 +285,102 @@ function walk(p, base, out) {
   }
 }
 
+async function uploadOne(c, bucket, prefix, it, onProgress) {
+  const id = `up:${Date.now()}:${it.rel}`
+  const key = prefix + it.rel
+  const base = { id, name: it.rel, kind: 'upload', key, total: it.size }
+  const tick = throttle((loaded) => onProgress({ ...base, loaded, state: 'active' }))
+  onProgress({ ...base, loaded: 0, state: 'active' })
+  try {
+    // Big files go up as many 16 MB+ parts at once; parts grow if needed to stay under S3's 10,000-part limit.
+    const big = it.size >= 64 * MB
+    const partSize = Math.max(16 * MB, Math.ceil(it.size / 9000 / MB) * MB)
+    const u = new Upload({
+      client: client(c),
+      params: { Bucket: bucket, Key: key, Body: fs.createReadStream(it.file, { highWaterMark: 4 * MB }), ContentType: mime.lookup(it.file) || 'application/octet-stream' },
+      queueSize: big ? 10 : 4, partSize, leavePartsOnError: false,
+    })
+    u.on('httpUploadProgress', (p) => tick(p.loaded || 0))
+    await u.done()
+    onProgress({ ...base, loaded: it.size, state: 'done' })
+  } catch (e) {
+    onProgress({ ...base, loaded: 0, state: 'error', error: e.message })
+  }
+}
+
 async function upload(c, bucket, prefix, paths, onProgress) {
   const items = []
   for (const p of paths) {
     const st = fs.statSync(p)
-    if (st.isDirectory()) {
-      const root = path.dirname(p)
-      walk(p, root, items)
-    } else {
-      items.push({ file: p, rel: path.basename(p), size: st.size })
-    }
+    if (st.isDirectory()) walk(p, path.dirname(p), items)
+    else items.push({ file: p, rel: path.basename(p), size: st.size })
   }
-  for (const it of items) {
-    const id = `up:${Date.now()}:${it.rel}`
-    const key = prefix + it.rel
-    onProgress({ id, name: it.rel, kind: 'upload', key, loaded: 0, total: it.size, state: 'active' })
-    try {
-      const u = new Upload({
-        client: client(c),
-        params: { Bucket: bucket, Key: key, Body: fs.createReadStream(it.file), ContentType: mime.lookup(it.file) || 'application/octet-stream' },
-        queueSize: 4, partSize: 8 * 1024 * 1024,
-      })
-      u.on('httpUploadProgress', (p) => onProgress({ id, name: it.rel, kind: 'upload', key, loaded: p.loaded || 0, total: it.size, state: 'active' }))
-      await u.done()
-      onProgress({ id, name: it.rel, kind: 'upload', key, loaded: it.size, total: it.size, state: 'done' })
-    } catch (e) {
-      onProgress({ id, name: it.rel, kind: 'upload', key, loaded: 0, total: it.size, state: 'error', error: e.message })
-    }
-  }
+  await Promise.all(items.map((it) => upSlots(it.size >= 64 * MB ? 4 : 1, () => uploadOne(c, bucket, prefix, it, onProgress))))
 }
 
-async function downloadTo(c, bucket, key, dest, onProgress) {
+// Large objects are fetched as many byte ranges in parallel and written straight to their place in
+// the file, which is several times faster than one connection streaming from start to end.
+async function rangedDownload(cl, bucket, key, dest, total, tick) {
+  const CH = total > 2048 * MB ? 32 * MB : 16 * MB
+  const n = Math.ceil(total / CH)
+  let next = 0
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  const fh = await fs.promises.open(dest, 'w')
+  try {
+    await fh.truncate(total)
+    const worker = async () => {
+      for (;;) {
+        const i = next++
+        if (i >= n) return
+        const start = i * CH
+        const end = Math.min(start + CH, total) - 1
+        for (let attempt = 0; ; attempt++) {
+          let got = 0
+          try {
+            const r = await cl.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=${start}-${end}` }))
+            const buf = Buffer.allocUnsafe(end - start + 1)
+            for await (const d of r.Body) { d.copy(buf, got); got += d.length; tick(d.length) }
+            if (got !== buf.length) throw new Error('Connection ended early')
+            await fh.write(buf, 0, buf.length, start)
+            break
+          } catch (e) {
+            tick(-got)
+            if (attempt >= 3) throw e
+            await sleep(400 * 2 ** attempt)
+          }
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(8, n) }, worker))
+  } finally { await fh.close() }
+}
+
+async function downloadTo(c, bucket, key, dest, onProgress, knownSize) {
   const id = `dl:${Date.now()}:${key}`
   const name = key.split('/').pop()
-  const total = (await head(c, bucket, key)).size || 0
-  onProgress({ id, name, kind: 'download', loaded: 0, total, state: 'active' })
-  try {
-    const r = await client(c).send(new GetObjectCommand({ Bucket: bucket, Key: key }))
-    let loaded = 0
-    r.Body.on('data', (d) => { loaded += d.length; onProgress({ id, name, kind: 'download', loaded, total, state: 'active' }) })
-    fs.mkdirSync(path.dirname(dest), { recursive: true })
-    await pipeline(r.Body, fs.createWriteStream(dest))
-    onProgress({ id, name, kind: 'download', loaded: total, total, state: 'done' })
-  } catch (e) {
-    onProgress({ id, name, kind: 'download', loaded: 0, total, state: 'error', error: e.message })
+  let total = knownSize
+  try { if (total === undefined) total = (await head(c, bucket, key)).size || 0 } catch (e) {
+    onProgress({ id, name, kind: 'download', loaded: 0, total: 0, state: 'error', error: e.message }); return
   }
+  onProgress({ id, name, kind: 'download', loaded: 0, total, state: 'active' })
+  await downSlots(total >= BIG ? 4 : 1, async () => {
+    let loaded = 0
+    const send = throttle(() => onProgress({ id, name, kind: 'download', loaded, total, state: 'active' }))
+    try {
+      if (total >= BIG) {
+        await rangedDownload(client(c), bucket, key, dest, total, (d) => { loaded += d; send() })
+      } else {
+        const r = await client(c).send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+        r.Body.on('data', (d) => { loaded += d.length; send() })
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        await pipeline(r.Body, fs.createWriteStream(dest, { highWaterMark: 4 * MB }))
+      }
+      onProgress({ id, name, kind: 'download', loaded: total, total, state: 'done' })
+    } catch (e) {
+      fs.rm(dest, { force: true }, () => {})
+      onProgress({ id, name, kind: 'download', loaded: 0, total, state: 'error', error: e.message })
+    }
+  })
 }
 
 module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, cancelSearch, stats, upload, downloadTo }

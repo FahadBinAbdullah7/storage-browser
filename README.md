@@ -123,6 +123,7 @@ Click **＋ → NAS**, pick how your NAS shares files, and sign in with its **us
 - Browse buckets and folders with breadcrumbs, **list or grid view**, sorting, and a live filter
 - **Thumbnails** for images and videos in grid view
 - **Preview and play** video, audio, images, PDFs and text files; use ← → to move through a folder; Esc to close
+- **Fast uploads and downloads**: big files are sent as many parts at once and fetched as many ranges at once over a pool of reused connections, and many small files transfer in parallel; every transfer shows a live progress bar
 - **Upload** files or whole folders (button or drag and drop) with progress bars
 - **Download** files or entire folders
 - **New folder, rename, duplicate, and delete files** — for safety, **folders and buckets can never be deleted** from Cloudpeek

@@ -106,12 +106,11 @@ h('obj:download', async (id, b, keys) => {
   if (r.canceled) return false
   // Keep folder structure relative to the parent of each selected item.
   const base = (k) => (k.endsWith('/') ? k.slice(0, k.slice(0, -1).lastIndexOf('/') + 1) : k.slice(0, k.lastIndexOf('/') + 1))
-  ;(async () => {
-    for (const f of files) {
-      const root = keys.find((k) => f.key === k || (k.endsWith('/') && f.key.startsWith(k))) || f.key
-      await objects.downloadTo(c, b, f.key, path.join(r.filePaths[0], f.key.slice(base(root).length)), progress)
-    }
-  })()
+  // All files start together; the transfer budget in objects.js decides how many run at once.
+  Promise.all(files.map((f) => {
+    const root = keys.find((k) => f.key === k || (k.endsWith('/') && f.key.startsWith(k))) || f.key
+    return objects.downloadTo(c, b, f.key, path.join(r.filePaths[0], f.key.slice(base(root).length)), progress, f.size)
+  })).catch(() => {})
   return true
 })
 

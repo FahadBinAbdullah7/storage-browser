@@ -123,16 +123,16 @@ async function smbProvider(c) {
     async upload(local, remote, cb) {
       const total = fs.statSync(local).size
       let n = 0
-      const src = fs.createReadStream(local)
+      const src = fs.createReadStream(local, { highWaterMark: 4 * 1024 * 1024 })
       src.on('data', (d) => { n += d.length; cb(n, total) })
-      await pipeline(src, fs.createWriteStream(loc(remote)))
+      await pipeline(src, fs.createWriteStream(loc(remote), { highWaterMark: 4 * 1024 * 1024 }))
     },
     async download(remote, local, cb) {
       const total = (await fs.promises.stat(loc(remote))).size
       let n = 0
-      const src = fs.createReadStream(loc(remote))
+      const src = fs.createReadStream(loc(remote), { highWaterMark: 4 * 1024 * 1024 })
       src.on('data', (d) => { n += d.length; cb(n, total) })
-      await pipeline(src, fs.createWriteStream(local))
+      await pipeline(src, fs.createWriteStream(local, { highWaterMark: 4 * 1024 * 1024 }))
     },
     async close() { await smbUnmount(c) },
   }
