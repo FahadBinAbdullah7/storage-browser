@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('api', {
     buckets: (id) => invoke('obj:buckets', id),
     list: (id, b, p, t) => invoke('obj:list', id, b, p, t),
     presign: (id, b, k, s) => invoke('obj:presign', id, b, k, s),
+    cacheGet: (id, b, p) => invoke('cache:get', id, b, p),
+    cacheSet: (id, b, p, d) => invoke('cache:set', id, b, p, d),
     listStream: (id, b, p, lid) => invoke('obj:listStream', id, b, p, lid),
     listCancel: (lid) => invoke('obj:listCancel', lid),
     text: (id, b, k) => invoke('obj:text', id, b, k),

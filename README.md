@@ -124,7 +124,7 @@ Click **＋ → NAS**, pick how your NAS shares files, and sign in with its **us
 - Browse buckets and folders with breadcrumbs, **list or grid view**, sorting, and a live filter
 - **Thumbnails** for images and videos in grid view
 - **Preview and play** video, audio, images, PDFs and text files; use ← → to move through a folder; Esc to close
-- **Instant folders**: a folder is read in many parallel pieces, so all its sub-folders appear within a couple of seconds even among tens of thousands of files, and only the rows on screen are drawn
+- **Instant folders**: a folder is read in many parallel pieces, so all its sub-folders appear within a couple of seconds even among tens of thousands of files, and only the rows on screen are drawn. Every folder you open is also remembered on your computer, so the next time (even after restarting the app) its sub-folders are there instantly while the list refreshes quietly in the background
 - **Fast uploads and downloads**: big files are sent as many parts at once and fetched as many ranges at once over a pool of reused connections, and many small files transfer in parallel; every transfer shows a live progress bar
 - **Upload** files or whole folders (button or drag and drop) with progress bars
 - **Download** files or entire folders
@@ -168,6 +168,7 @@ Right-click any item for the full menu.
 ## Privacy and security
 
 - Keys are stored **only on your computer**, encrypted with the operating system keychain (macOS Keychain / Windows DPAPI) via Electron's `safeStorage`.
+- Folder listings (names, sizes, dates — never file contents) are cached on your computer in the app's data folder and are erased when you delete the connection.
 - Secrets never reach the app's interface layer — it only knows whether a secret exists.
 - All requests go **directly from your computer** to Amazon S3 / Cloudflare. There is no Cloudpeek server.
 - Use the least-privileged keys you can (for example, a token limited to one bucket).

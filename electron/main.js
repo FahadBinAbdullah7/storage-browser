@@ -6,6 +6,7 @@ const objects = require('./objects')
 const d1 = require('./d1')
 const updater = require('./updater')
 const nas = require('./nas')
+const listcache = require('./listcache')
 
 const DEV = !!process.env.VITE_DEV
 let win
@@ -59,7 +60,7 @@ h('update:install', () => upd.install?.())
 
 h('conn:list', () => store.listPublic())
 h('conn:save', (c) => store.save({ ...c, id: c.id || crypto.randomUUID() }))
-h('conn:remove', (id) => store.remove(id))
+h('conn:remove', (id) => { store.remove(id); listcache.clearConn(id) })
 h('conn:test', async (c) => {
   const full = c.id ? { ...store.get(c.id), ...Object.fromEntries(Object.entries(c).filter(([, v]) => v !== '' && v !== undefined && v !== null)) } : c
   if (full.type === 'nas') return nas.test(full)
@@ -74,6 +75,8 @@ h('obj:list', (id, b, p, t) => objects.list(C(id), b, p, t))
 h('obj:presign', (id, b, k, s) => objects.presign(C(id), b, k, s))
 h('obj:listStream', (id, b, p, lid) => { objects.listStream(C(id), b, p, lid, send('listing')); return true })
 h('obj:listCancel', (lid) => objects.cancelListing(lid))
+h('cache:get', (id, b, p) => listcache.get(id, b, p))
+h('cache:set', (id, b, p, d) => listcache.set(id, b, p, d))
 h('obj:text', (id, b, k) => objects.getText(C(id), b, k))
 h('obj:head', (id, b, k) => objects.head(C(id), b, k))
 h('obj:mkdir', (id, b, p) => objects.mkdir(C(id), b, p))

@@ -132,7 +132,7 @@ const listings = new Map()
 const CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)) // ' ' .. '~'
 const below = (s) => s.slice(0, -1) + String.fromCharCode(s.charCodeAt(s.length - 1) - 1) + '\u{10ffff}'
 const byteCmp = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
-const LIST_PARALLEL = 48
+const LIST_PARALLEL = 96
 
 function semaphore(n) {
   let used = 0
@@ -218,9 +218,9 @@ async function listStream(c, bucket, prefix, lid, emit) {
 
   try {
     try {
-      const lows = [prefix, ...CHARS.map((ch) => prefix + ch)]
-      const highs = [...CHARS.map((ch) => prefix + ch), null]
-      await Promise.all(lows.map((lo, i) => scan(lo, highs[i], 1, i > 0)))
+      // Page 1 comes back in one round trip and is shown at once. A small folder ends there; a big one is cut into
+      // ranges that are read in parallel.
+      await scan(prefix, null, 0, true)
     } catch (e) {
       // If the server dislikes ranged listing, read the folder the plain way (repeats are filtered out).
       if (st.cancelled || ['AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch', 'NoSuchBucket'].includes(e?.name)) throw e

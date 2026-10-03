@@ -100,7 +100,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     if (!cache.current.has(key)) setLoading(true)
     const lid = `l${++listSeq.current}`
     const accF: Folder[] = [], accFi: FileItem[] = []
-    let lastPaint = 0, firstSeen = false, timer: ReturnType<typeof setTimeout> | undefined
+    let lastPaint = 0, firstSeen = false, stale = false, timer: ReturnType<typeof setTimeout> | undefined
     const publish = () => { clearTimeout(timer); timer = undefined; setFolders(accF.slice()); setFiles(accFi.slice()); lastPaint = Date.now() }
     // Each run covers a contiguous stretch of names, so one binary search places it.
     const insert = <T,>(arr: T[], run: T[], keyOf: (x: T) => string) => {
@@ -126,20 +126,32 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
           window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
         }
-        publish()
+        if (!stale) publish()
       }
       if (m.done) {
         off(); stopListing.current = null
         publish(); setLoadingMore(false); setLoading(false)
-        if (!m.error && accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
+        if (!m.error) {
+          if (accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
+          window.api.obj.cacheSet(conn.id, bucket, prefix, { folders: accF, files: accFi.slice(0, 3000) })
+        }
         return
       }
+      if (stale) return
       setLoadingMore(true)
       const gap = accF.length + accFi.length > 50000 ? 3000 : 700
       if (Date.now() - lastPaint > gap) publish()
       else if (!timer) timer = setTimeout(publish, gap)
     })
     stopListing.current = () => { off(); clearTimeout(timer); window.api.obj.listCancel(lid); stopListing.current = null }
+    // The listing saved on this computer appears at once; the fresh one replaces it when complete (no flicker in between).
+    if (!cache.current.has(key)) {
+      window.api.obj.cacheGet(conn.id, bucket, prefix).then((c) => {
+        if (!c.ok || !c.data || firstSeen || id !== reqId.current) return
+        stale = true; setLoadingMore(true)
+        setFolders(c.data.folders); setFiles(c.data.files); setLoading(false); setSel(new Set())
+      }).catch(() => {})
+    }
     const r = await window.api.obj.listStream(conn.id, bucket, prefix, lid)
     if (!r.ok) { setError(r.error); setLoading(false); setLoadingMore(false); off() }
   }, [bucket, prefix, conn.id, allowed, buckets])

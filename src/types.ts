@@ -51,6 +51,8 @@ declare global {
       obj: {
         buckets(id: string): R<{ name: string }[]>
         list(id: string, b: string, p: string, t?: string | null): R<{ folders: Folder[]; files: FileItem[]; nextToken: string | null }>
+        cacheGet(id: string, b: string, p: string): R<{ at: number; folders: Folder[]; files: FileItem[] } | null>
+        cacheSet(id: string, b: string, p: string, d: { folders: Folder[]; files: FileItem[] }): R<void>
         listStream(id: string, b: string, p: string, lid: string): R<boolean>
         listCancel(lid: string): R<void>
         presign(id: string, b: string, k: string, secs: number): R<string>
