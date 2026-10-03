@@ -122,6 +122,117 @@ async function list(c, bucket, prefix, token) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fast folder listing. S3/R2 hand out a folder one page (1,000 entries) at a time, in name order, so
+// reading a big folder start-to-end takes many round trips and folders trickle in one by one. Instead the
+// name space is cut into ranges by first letter (and, for busy ranges, by second and third letter) and the
+// ranges are read in parallel, so every folder shows up within a few seconds. Each finished page is sent to
+// the window straight away as a sorted run.
+const listings = new Map()
+const CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)) // ' ' .. '~'
+const below = (s) => s.slice(0, -1) + String.fromCharCode(s.charCodeAt(s.length - 1) - 1) + '\u{10ffff}'
+const byteCmp = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
+const LIST_PARALLEL = 48
+
+function semaphore(n) {
+  let used = 0
+  const q = []
+  const next = () => { while (used < n && q.length) { used++; q.shift()() } }
+  return (fn) => new Promise((resolve, reject) => {
+    q.push(() => fn().then(resolve, reject).finally(() => { used--; next() }))
+    next()
+  })
+}
+
+async function listStream(c, bucket, prefix, lid, emit) {
+  const st = { cancelled: false }
+  listings.set(lid, st)
+  const cl = client(c)
+  const seen = new Set()
+  const sem = semaphore(LIST_PARALLEL)
+  const send = (o) => cl.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, Delimiter: '/', MaxKeys: 1000, ...o }))
+  const req = (o) => sem(() => send(o))
+
+  // Sends the new entries of one page (a contiguous, name-ordered run) and tells the caller whether the
+  // range's upper bound was reached and which entry came last.
+  const absorb = (r, hi) => {
+    const folders = [], files = []
+    let reached = false
+    let last = null
+    const take = (s) => {
+      if (last === null || byteCmp(s, last) > 0) last = s
+      if (hi !== null && s >= hi) { reached = true; return false }
+      return true
+    }
+    for (const o of r.Contents || []) {
+      if (o.Key === prefix || !take(o.Key)) continue
+      if (seen.has(o.Key)) continue
+      seen.add(o.Key)
+      files.push({ key: o.Key, name: o.Key.slice(prefix.length), size: o.Size, lastModified: o.LastModified?.toISOString() })
+    }
+    for (const p of r.CommonPrefixes || []) {
+      if (!take(p.Prefix)) continue
+      if (seen.has(p.Prefix)) continue
+      seen.add(p.Prefix)
+      folders.push({ prefix: p.Prefix, name: p.Prefix.slice(prefix.length).replace(/\/$/, '') })
+    }
+    if ((folders.length || files.length) && !st.cancelled) emit({ id: lid, folders, files, done: false })
+    return { last, reached }
+  }
+
+  // Reads the names in [lo, hi). A busy range (first page full) is cut into sub-ranges that run in parallel.
+  async function scan(lo, hi, depth, canSplit, after) {
+    let token
+    let first = true
+    let start = after !== undefined ? after : lo === prefix ? undefined : below(lo)
+    for (;;) {
+      if (st.cancelled) return
+      const r = await req(token ? { ContinuationToken: token } : start !== undefined ? { StartAfter: start } : {})
+      const { last, reached } = absorb(r, hi)
+      if (reached || !r.IsTruncated) return
+      token = r.NextContinuationToken
+      if (first && canSplit && depth < 3 && last !== null) {
+        const lows = [lo, ...CHARS.map((ch) => lo + ch)]
+        const highs = [...CHARS.map((ch) => lo + ch), hi]
+        const jobs = []
+        for (let i = 0; i < lows.length; i++) {
+          if (highs[i] !== null && highs[i] <= last) continue // already covered by the first page
+          jobs.push(scan(lows[i], highs[i], depth + 1, i > 0, lows[i] <= last ? last : undefined))
+        }
+        await Promise.all(jobs)
+        return
+      }
+      first = false
+    }
+  }
+
+  async function sequential() {
+    let token
+    do {
+      if (st.cancelled) return
+      const r = await send(token ? { ContinuationToken: token } : {})
+      absorb(r, null)
+      token = r.IsTruncated ? r.NextContinuationToken : undefined
+    } while (token)
+  }
+
+  try {
+    try {
+      const lows = [prefix, ...CHARS.map((ch) => prefix + ch)]
+      const highs = [...CHARS.map((ch) => prefix + ch), null]
+      await Promise.all(lows.map((lo, i) => scan(lo, highs[i], 1, i > 0)))
+    } catch (e) {
+      // If the server dislikes ranged listing, read the folder the plain way (repeats are filtered out).
+      if (st.cancelled || ['AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch', 'NoSuchBucket'].includes(e?.name)) throw e
+      await sequential()
+    }
+    if (!st.cancelled) emit({ id: lid, folders: [], files: [], done: true })
+  } catch (e) {
+    if (!st.cancelled) emit({ id: lid, folders: [], files: [], done: true, error: e?.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : e?.message || String(e) })
+  } finally { listings.delete(lid) }
+}
+const cancelListing = (lid) => { const s = listings.get(lid); if (s) s.cancelled = true }
+
 async function listAll(c, bucket, prefix) {
   const out = []
   let token
@@ -396,4 +507,4 @@ async function downloadTo(c, bucket, key, dest, onProgress, knownSize) {
   })
 }
 
-module.exports = { listBuckets, list, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, cancelSearch, stats, upload, downloadTo }
+module.exports = { listBuckets, list, listStream, cancelListing, expand, presign, getText, head, headFull, setMeta, mkdir, remove, move, copy, createBucket, search, cancelSearch, stats, upload, downloadTo }

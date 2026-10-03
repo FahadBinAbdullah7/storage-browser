@@ -51,6 +51,8 @@ declare global {
       obj: {
         buckets(id: string): R<{ name: string }[]>
         list(id: string, b: string, p: string, t?: string | null): R<{ folders: Folder[]; files: FileItem[]; nextToken: string | null }>
+        listStream(id: string, b: string, p: string, lid: string): R<boolean>
+        listCancel(lid: string): R<void>
         presign(id: string, b: string, k: string, secs: number): R<string>
         text(id: string, b: string, k: string): R<string>
         head(id: string, b: string, k: string): R<{ size: number; type?: string; etag?: string; lastModified?: string }>
@@ -92,6 +94,7 @@ declare global {
       copy(t: string): R<void>
       openExternal(u: string): R<void>
       onSearch(cb: (r: SearchProgress) => void): () => void
+      onListing(cb: (m: { id: string; folders: Folder[]; files: FileItem[]; done: boolean; error?: string }) => void): () => void
       onTransfer(cb: (t: Transfer) => void): () => void
       onUpdate(cb: (u: UpdateState) => void): () => void
       update: { state(): R<UpdateState | null>; check(): R<void>; download(): R<void>; install(): R<void> }

@@ -82,11 +82,14 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const allowed = useMemo(() => (conn.folders || '').split('\n').map((x) => x.trim().replace(/^\/+/, '')).filter(Boolean).map((x) => (x.endsWith('/') ? x : x + '/')), [conn.folders])
   const outsideAllowed = (p: string) => allowed.length > 0 && !allowed.some((f) => p.startsWith(f))
 
-  // Cyberduck-style listing: the first page (1,000 entries) is shown at once; the remaining pages are
-  // fetched quietly in the background and published at most every second or two, so a folder with
-  // hundreds of thousands of files never blocks the window.
-  const load = useCallback(async (more = false) => {
+  // Folder listing: the main process reads the folder in many parallel pieces and sends each finished page
+  // (a sorted run) straight here. Pages are merged into two sorted lists (folders, files) and shown at once for
+  // the first page, then at most once a second or two, so even a 300,000-file folder stays smooth.
+  const stopListing = useRef<(() => void) | null>(null)
+  const listSeq = useRef(0)
+  const load = useCallback(async () => {
     if (!bucket) return
+    stopListing.current?.()
     const id = ++reqId.current
     if (outsideAllowed(prefix)) {
       const segs = [...new Set(allowed.filter((f) => f.startsWith(prefix) && f !== prefix).map((f) => f.slice(prefix.length).split('/')[0]))]
@@ -94,44 +97,57 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       return
     }
     const key = `${conn.id}|${bucket}|${prefix}`
-    if (!more && !cache.current.has(key)) setLoading(true)
-    let token: string | null = more ? next : null
-    let first = !more
-    let pages = 0
+    if (!cache.current.has(key)) setLoading(true)
+    const lid = `l${++listSeq.current}`
     const accF: Folder[] = [], accFi: FileItem[] = []
-    let lastPaint = 0
-    const publish = () => { setFolders(accF.slice()); setFiles(accFi.slice()); lastPaint = Date.now() }
-    do {
-      const r = await guard(window.api.obj.list(conn.id, bucket, prefix, token))
-      if (id !== reqId.current) return
-      setLoading(false)
-      if (!r) { setLoadingMore(false); return }
-      const f0 = first
-      // A bucket opened by typing its name worked: remember it so it is listed next time.
-      if (f0 && buckets && !buckets.some((b) => b.name === bucket)) {
-        setBuckets((l) => [...(l || []), { name: bucket }])
-        const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
-        window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
+    let lastPaint = 0, firstSeen = false, timer: ReturnType<typeof setTimeout> | undefined
+    const publish = () => { clearTimeout(timer); timer = undefined; setFolders(accF.slice()); setFiles(accFi.slice()); lastPaint = Date.now() }
+    // Each run covers a contiguous stretch of names, so one binary search places it.
+    const insert = <T,>(arr: T[], run: T[], keyOf: (x: T) => string) => {
+      if (!run.length) return
+      run.sort((x, y) => (keyOf(x) < keyOf(y) ? -1 : keyOf(x) > keyOf(y) ? 1 : 0))
+      const k = keyOf(run[0])
+      let lo = 0, hi = arr.length
+      while (lo < hi) { const m = (lo + hi) >> 1; if (keyOf(arr[m]) < k) lo = m + 1; else hi = m }
+      if (lo === arr.length) for (const x of run) arr.push(x)
+      else arr.splice(lo, 0, ...run)
+    }
+    const off = window.api.onListing((m) => {
+      if (m.id !== lid || id !== reqId.current) return
+      if (m.error) { setError(m.error); toast(m.error, 'bad') }
+      insert(accF, m.folders, (x) => x.prefix)
+      insert(accFi, m.files, (x) => x.key)
+      if (!firstSeen && (m.folders.length || m.files.length || m.done)) {
+        firstSeen = true
+        setLoading(false); setSel(new Set())
+        // A bucket opened by typing its name worked: remember it so it is listed next time.
+        if (buckets && !buckets.some((b) => b.name === bucket)) {
+          setBuckets((l) => [...(l || []), { name: bucket }])
+          const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
+          window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
+        }
+        publish()
       }
-      for (const x of r.folders) accF.push(x)
-      for (const x of r.files) accFi.push(x)
-      token = r.nextToken
-      setNext(token)
-      pages++
-      // First page right away; then more rarely as the list grows (each publish copies the arrays).
-      const gap = accF.length + accFi.length > 50000 ? 3000 : 1200
-      if (f0 || !token || Date.now() - lastPaint > gap) publish()
-      if (f0) setSel(new Set())
-      first = false
-      setLoadingMore(!!token)
-    } while (token && pages < 5000)
-    publish()
-    setLoadingMore(false)
-    if (!more && accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
-  }, [bucket, prefix, conn.id, next, allowed, buckets])
+      if (m.done) {
+        off(); stopListing.current = null
+        publish(); setLoadingMore(false); setLoading(false)
+        if (!m.error && accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
+        return
+      }
+      setLoadingMore(true)
+      const gap = accF.length + accFi.length > 50000 ? 3000 : 700
+      if (Date.now() - lastPaint > gap) publish()
+      else if (!timer) timer = setTimeout(publish, gap)
+    })
+    stopListing.current = () => { off(); clearTimeout(timer); window.api.obj.listCancel(lid); stopListing.current = null }
+    const r = await window.api.obj.listStream(conn.id, bucket, prefix, lid)
+    if (!r.ok) { setError(r.error); setLoading(false); setLoadingMore(false); off() }
+  }, [bucket, prefix, conn.id, allowed, buckets])
+
+  useEffect(() => () => { stopListing.current?.() }, [])
 
   // Mutations (upload, delete, rename, move…) invalidate every cached folder.
-  const reload = () => { cache.current.clear(); load(false) }
+  const reload = () => { cache.current.clear(); load() }
 
   // Opening a folder shows its last known contents instantly (cache / hover prefetch) and refreshes quietly.
   useEffect(() => {
@@ -139,7 +155,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     const c = bucket ? cache.current.get(`${conn.id}|${bucket}|${prefix}`) : undefined
     if (c) { setFolders(c.folders); setFiles(c.files); setNext(c.next); setLoading(false); setSel(new Set()) }
     else { setFolders([]); setFiles([]) }
-    load(false)
+    load()
   }, [bucket, prefix]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Warm the cache while the pointer rests on a folder, so opening it feels instant.

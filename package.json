@@ -1,7 +1,7 @@
 {
   "name": "cloudpeek",
   "productName": "Cloudpeek",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Browser for S3, R2, D1 and network storage (NAS)",
   "main": "electron/main.js",
   "author": "Cloudpeek",
