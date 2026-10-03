@@ -21,10 +21,37 @@ Not sure which Mac you have? Apple menu → **About This Mac**. If it says *Chip
 
 ### First launch (one-time warning)
 
-The app is **unsigned**, so your system shows a warning the first time you open it. This is expected.
+The app is **unsigned**, so your system blocks it the first time. This is expected.
 
-- **Windows:** click **More info → Run anyway**.
-- **Mac:** open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Older macOS: right-click the app → **Open**.)
+**Windows**
+1. Run `Cloudpeek-Windows-Setup.exe`.
+2. On the blue "Windows protected your PC" screen click **More info → Run anyway**.
+
+**Mac** — newer macOS versions often show *"Cloudpeek is damaged and can't be opened"* or *"cannot be verified"* and may not offer an **Open Anyway** button. Use this exact method, it always works:
+
+1. Open the downloaded `.dmg` and drag **Cloudpeek** into **Applications**.
+2. Open **Terminal** (press `⌘ + Space`, type `Terminal`, press Enter).
+3. Paste this line and press Enter:
+   ```bash
+   xattr -cr /Applications/Cloudpeek.app
+   ```
+4. Open **Cloudpeek** from Applications as normal. You only do this once.
+
+(That command removes the "downloaded from the internet" flag macOS puts on the file. It does nothing else.)
+
+**Or install everything from Terminal in one go** (no warning at all, because the file never gets the flag).
+Apple Silicon (M1–M4):
+```bash
+curl -L -o ~/Downloads/Cloudpeek.dmg https://github.com/FahadBinAbdullah7/storage-browser/releases/latest/download/Cloudpeek-Mac-arm64.dmg
+hdiutil attach ~/Downloads/Cloudpeek.dmg -nobrowse -quiet
+cp -R /Volumes/Cloudpeek*/Cloudpeek.app /Applications/
+hdiutil detach /Volumes/Cloudpeek* -quiet
+xattr -cr /Applications/Cloudpeek.app
+open /Applications/Cloudpeek.app
+```
+Intel: same commands, but use `Cloudpeek-Mac-x64.dmg` in the first line.
+
+*If you do see the button:* try opening the app once, then go to **System Settings → Privacy & Security**, scroll to the bottom and click **Open Anyway** (it only appears for about an hour after a blocked attempt).
 
 ### Updating
 
@@ -132,7 +159,7 @@ Right-click any item for the full menu.
 | Videos won't play | Some formats (e.g. `.mkv`, some `.mov`) aren't supported by the built-in player. Use MP4 (H.264) or WebM, or download the file. |
 | Copied link says "Access Denied" | The bucket isn't public. Enable a public domain on the bucket, or use **Signed link**. |
 | Copied link uses the wrong domain | Click the 🌐 domain button in the toolbar to change it for this bucket. |
-| Mac says the app is damaged / can't be opened | Use **System Settings → Privacy & Security → Open Anyway**, or run `xattr -cr /Applications/Cloudpeek.app`. |
+| Mac says the app is damaged / can't be opened | Run `xattr -cr /Applications/Cloudpeek.app` in Terminal, then open it again (see *First launch* above). |
 | Update failed | Click **Download manually** in the banner and install the latest build. |
 
 ---
