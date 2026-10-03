@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { Conn, FileItem, Folder, SearchProgress, Transfer } from '../types'
 import { call, fmtDate, fmtSize, ICON_NAME, kindOf } from '../util'
 import Icon, { type IconName } from './Icon'
@@ -31,6 +31,11 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<FileItem | null>(null)
   const [closedFor, setClosedFor] = useState<string | null>(null)
+  const [filterAt, setFilterAt] = useState('')
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewH, setViewH] = useState(700)
+  const [gridLimit, setGridLimit] = useState(400)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [uploaded, setUploaded] = useState<{ key: string; name: string }[] | null>(null)
   const batchRef = useRef<{ key: string; name: string }[]>([])
   const activeUp = useRef(new Set<string>())
@@ -77,7 +82,9 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const allowed = useMemo(() => (conn.folders || '').split('\n').map((x) => x.trim().replace(/^\/+/, '')).filter(Boolean).map((x) => (x.endsWith('/') ? x : x + '/')), [conn.folders])
   const outsideAllowed = (p: string) => allowed.length > 0 && !allowed.some((f) => p.startsWith(f))
 
-  // Loads the first page right away, then keeps fetching the rest in the background so every folder shows up.
+  // Cyberduck-style listing: the first page (1,000 entries) is shown at once; the remaining pages are
+  // fetched quietly in the background and published at most every second or two, so a folder with
+  // hundreds of thousands of files never blocks the window.
   const load = useCallback(async (more = false) => {
     if (!bucket) return
     const id = ++reqId.current
@@ -91,7 +98,9 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     let token: string | null = more ? next : null
     let first = !more
     let pages = 0
-    let accF: Folder[] = [], accFi: FileItem[] = []
+    const accF: Folder[] = [], accFi: FileItem[] = []
+    let lastPaint = 0
+    const publish = () => { setFolders(accF.slice()); setFiles(accFi.slice()); lastPaint = Date.now() }
     do {
       const r = await guard(window.api.obj.list(conn.id, bucket, prefix, token))
       if (id !== reqId.current) return
@@ -104,19 +113,21 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
         const names = [...new Set([...(conn.defaultBucket || '').split(/[,\s]+/).filter(Boolean), bucket])].join(', ')
         window.api.conn.save({ id: conn.id, defaultBucket: names }).then(() => onChanged())
       }
-      accF = f0 ? r.folders : [...accF, ...r.folders]
-      accFi = f0 ? r.files : [...accFi, ...r.files]
-      setFolders(accF)
-      setFiles(accFi)
-      if (!more) cache.current.set(key, { folders: accF, files: accFi, next: r.nextToken })
-      if (f0 && !cache.current.has(key + '#shown')) setSel(new Set())
-      first = false
+      for (const x of r.folders) accF.push(x)
+      for (const x of r.files) accFi.push(x)
       token = r.nextToken
       setNext(token)
       pages++
-      setLoadingMore(!!token && pages < 60)
-    } while (token && pages < 60)
+      // First page right away; then more rarely as the list grows (each publish copies the arrays).
+      const gap = accF.length + accFi.length > 50000 ? 3000 : 1200
+      if (f0 || !token || Date.now() - lastPaint > gap) publish()
+      if (f0) setSel(new Set())
+      first = false
+      setLoadingMore(!!token)
+    } while (token && pages < 5000)
+    publish()
     setLoadingMore(false)
+    if (!more && accF.length + accFi.length <= 50000) cache.current.set(key, { folders: accF, files: accFi, next: null })
   }, [bucket, prefix, conn.id, next, allowed, buckets])
 
   // Mutations (upload, delete, rename, move…) invalidate every cached folder.
@@ -178,27 +189,43 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     if (t.state === 'error') toast(`${t.name}: ${t.error}`, 'bad')
   }), [load])
 
-  const entries = useMemo<Entry[]>(() => {
-    const f = filter.toLowerCase()
-    const cmp = (a: Entry, b: Entry) => {
-      const v = sort.by === 'name' ? a.name.localeCompare(b.name, undefined, { numeric: true }) : sort.by === 'size' ? a.size - b.size : a.date.localeCompare(b.date)
-      return v * sort.dir
-    }
-    const uniq = <T,>(a: T[], k: (x: T) => string) => [...new Map(a.map((x) => [k(x), x])).values()]
-    const pool = deepRes ? uniq([...files, ...deepRes.files], (x) => x.key) : files
-    const fo = (kind === 'files' ? [] : deepRes ? uniq([...folders, ...deepRes.folders], (x) => x.prefix) : folders).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }))
-    const fi = (kind === 'folders' ? [] : pool).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }))
-    return [...fo.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), ...fi.sort(cmp)]
-  }, [folders, files, deepRes, filter, sort, kind])
+  // Measure the scroll area, and jump back to the top when the folder changes.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight))
+    ro.observe(el); setViewH(el.clientHeight)
+    return () => ro.disconnect()
+  }, [bucket])
+  useEffect(() => { contentRef.current?.scrollTo(0, 0); setScrollTop(0); setGridLimit(400) }, [prefix, bucket])
 
+  const effFilter = filterAt === prefix ? filter : ''
+  const dFilter = useDeferredValue(effFilter)
+  const entries = useMemo<Entry[]>(() => {
+    const f = dFilter.toLowerCase()
+    const fo: Entry[] = []
+    const fi: Entry[] = []
+    const fl = deepRes ? [...folders, ...deepRes.folders] : folders
+    const fil = deepRes ? [...files, ...deepRes.files] : files
+    if (kind !== 'files') for (const x of fl) { if (!f || x.name.toLowerCase().includes(f)) fo.push({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }) }
+    if (kind !== 'folders') for (const x of fil) { if (!f || x.name.toLowerCase().includes(f)) fi.push({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }) }
+    // S3 already returns keys in name order, so the default view needs no sorting at all.
+    if (sort.by === 'name') { if (sort.dir === -1) { fo.reverse(); fi.reverse() } }
+    else fi.sort(sort.by === 'size' ? (a, b) => (a.size - b.size) * sort.dir : (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * sort.dir)
+    return fo.length ? fo.concat(fi) : fi
+  }, [folders, files, deepRes, dFilter, sort, kind])
+
+  const ROW_H = 41
+  const vStart = Math.max(0, Math.floor(scrollTop / ROW_H) - 12)
+  const vEnd = Math.min(entries.length, Math.ceil((scrollTop + viewH) / ROW_H) + 16)
   const crumbs = prefix.split('/').filter(Boolean)
   const publicBase = (bucket && conn.publicUrls?.[bucket]) || conn.publicBase || undefined
   const selKeys = [...sel]
   const hasFolder = selKeys.some((k) => k.endsWith('/'))
   const oneFile = selKeys.length === 1 && !selKeys[0].endsWith('/')
-  const previewable = entries.filter((e) => e.type === 'file')
+  const previewableList = () => entries.filter((e) => e.type === 'file')
   const fileOf = (k: string) => (deepRes ? [...files, ...deepRes.files] : files).find((x) => x.key === k)
-  const totalSize = files.reduce((n, f) => n + f.size, 0)
+  const totalSize = useMemo(() => files.reduce((n, f) => n + f.size, 0), [files])
 
   const select = (e: React.MouseEvent, i: number) => {
     const k = entries[i].key
@@ -421,8 +448,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       <div className="searchbar">
         <div className="search-big">
           <Icon name="search" size={16} />
-          <input ref={filterRef} placeholder={`Search in ${prefix ? prefix.replace(/\/$/, '') : bucket} (this folder only)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
-          {filter && <button className="icon-btn sm" title="Clear (Esc)" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
+          <input ref={filterRef} placeholder={`Search in ${prefix ? prefix.replace(/\/$/, '') : bucket} (this folder only)…`} value={effFilter} onChange={(e) => { setFilter(e.target.value); setFilterAt(prefix) }} />
+          {effFilter && <button className="icon-btn sm" title="Clear (Esc)" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
         </div>
       </div>
       {search && (
@@ -451,23 +478,24 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       </div>
 
       <div className="split">
-      <div className="content" onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
+      <div className="content" ref={contentRef} onScroll={(e) => { const t = Math.floor(e.currentTarget.scrollTop / (ROW_H * 4)) * ROW_H * 4; setScrollTop((p) => (p === t ? p : t)) }} onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
         {loading && !entries.length && <div className="skel-list">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skel" style={{ animationDelay: i * 60 + 'ms' }} />)}</div>}
 
         {!loading && !entries.length && (!search || search.done) && (
           <div className="empty-state">
             <div className="drop-ico"><Icon name="upload" size={34} /></div>
-            <h3>{filter ? 'No matches' : 'Nothing here yet'}</h3>
-            <p className="muted">{filter ? 'Try a different search.' : prefix === '' ? 'Nothing found at the top of this bucket. If you expected files, check that this is the right bucket, and whether your key is limited to certain folders (edit the connection and add them under “Allowed folders”). You can also drag files here to upload.' : 'Drag files or folders here to upload, or use the Upload button.'}</p>
+            <h3>{effFilter ? 'No matches' : 'Nothing here yet'}</h3>
+            <p className="muted">{effFilter ? 'Try a different search.' : prefix === '' ? 'Nothing found at the top of this bucket. If you expected files, check that this is the right bucket, and whether your key is limited to certain folders (edit the connection and add them under “Allowed folders”). You can also drag files here to upload.' : 'Drag files or folders here to upload, or use the Upload button.'}</p>
           </div>
         )}
 
         {entries.length > 0 && view === 'list' && (
-          <table>
+          <table className="vt">
             <thead><tr><SortHead by="name" label="Name" /><SortHead by="size" label="Size" cls="num" /><SortHead by="date" label="Modified" cls="date" /><th className="ra-h" /></tr></thead>
             <tbody>
-              {entries.map((e, i) => (
-                <tr key={e.key} {...dragProps(e)} className={(sel.has(e.key) ? 'on' : '') + (hoverDir === e.key ? ' drop' : '')} style={{ animationDelay: Math.min(i, 20) * 12 + 'ms' }}
+              {vStart > 0 && <tr aria-hidden="true" className="vsp"><td colSpan={4} style={{ height: vStart * ROW_H }} /></tr>}
+              {entries.slice(vStart, vEnd).map((e, j) => { const i = vStart + j; return (
+                <tr key={e.key} {...dragProps(e)} className={(sel.has(e.key) ? 'on' : '') + (hoverDir === e.key ? ' drop' : '')}
                   onClick={(ev) => { select(ev, i); setClosedFor(null) }} onDoubleClick={() => openEntry(e)} onMouseEnter={() => e.type === 'folder' && prefetch(e.key)}
                   onContextMenu={(ev) => { ev.preventDefault(); if (!sel.has(e.key)) setSel(new Set([e.key])); setMenu({ x: ev.clientX, y: ev.clientY }) }}>
                   <td><span className={'fi ' + (e.type === 'folder' ? 'folder' : kindOf(e.name))}><Icon name={(e.type === 'folder' ? 'folder' : ICON_NAME[kindOf(e.name)]) as IconName} size={18} /></span>{e.name}</td>
@@ -480,14 +508,15 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
                     <button className="ra-b" title="Rename" onClick={() => rename(e.key)}><Icon name="edit" size={14} /></button>
                   </td>
                 </tr>
-              ))}
+              )})}
+              {vEnd < entries.length && <tr aria-hidden="true" className="vsp"><td colSpan={4} style={{ height: (entries.length - vEnd) * ROW_H }} /></tr>}
             </tbody>
           </table>
         )}
 
         {entries.length > 0 && view === 'grid' && (
           <div className="tiles">
-            {entries.map((e, i) => (
+            {entries.slice(0, gridLimit).map((e, i) => (
               <div key={e.key} {...dragProps(e)} className={'tile' + (sel.has(e.key) ? ' on' : '') + (hoverDir === e.key ? ' drop' : '')} style={{ animationDelay: Math.min(i, 24) * 16 + 'ms' }}
                 onClick={(ev) => { select(ev, i); setClosedFor(null) }} onDoubleClick={() => openEntry(e)} onMouseEnter={() => e.type === 'folder' && prefetch(e.key)}
                 onContextMenu={(ev) => { ev.preventDefault(); if (!sel.has(e.key)) setSel(new Set([e.key])); setMenu({ x: ev.clientX, y: ev.clientY }) }}>
@@ -503,14 +532,14 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
             ))}
           </div>
         )}
-        {next && !loading && <p className="center pad"><button onClick={() => load(true)}>Load more</button></p>}
+        {view === 'grid' && entries.length > gridLimit && <p className="center pad"><button onClick={() => setGridLimit((n) => n + 400)}>Show more ({entries.length - gridLimit} more)</button></p>}
       </div>
 
       </div>
       {selKeys.length === 1 && closedFor !== selKeys[0] && <InfoPanel key={selKeys[0]} conn={conn} bucket={bucket} k={selKeys[0]} file={fileOf(selKeys[0])} publicBase={publicBase} onClose={() => setClosedFor(selKeys[0])} />}
 
       <div className="status muted">
-        <span>{loadingMore && <span className="spinner sm inl" />}{folders.length} folder(s), {files.length} file(s){files.length ? ` · ${fmtSize(totalSize)}` : ''}{loadingMore ? ' · loading more…' : next ? ' · more available' : ''}</span>
+        <span>{loadingMore && <span className="spinner sm inl" />}{folders.length} folder(s), {files.length} file(s){files.length ? ` · ${fmtSize(totalSize)}` : ''}</span>
         <span className="hint">Double-click to open · Right-click for more · Drop files to upload</span>
       </div>
 
@@ -544,6 +573,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
 
       {preview && (() => {
         const f = preview
+        const previewable = previewableList()
         const idx = previewable.findIndex((e) => e.key === f.key)
         const go = (d: number) => { const n = previewable[idx + d]; const nf = n && fileOf(n.key); if (nf) setPreview(nf) }
         return <Preview conn={conn} bucket={bucket} file={f} onClose={() => setPreview(null)} onLink={() => copyLink(f.key)} onDownload={() => guard(window.api.obj.download(conn.id, bucket, [f.key]))}

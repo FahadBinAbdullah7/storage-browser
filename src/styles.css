@@ -256,3 +256,11 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .lk input{padding:6px 9px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
 .tag.nas{background:#14b8a6}.c-ico.nas{background:#14b8a6}.found{display:flex;flex-wrap:wrap;gap:6px}.found button{font-size:12px;padding:4px 10px}
 .dialog label.check{flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:13px}.dialog label.check input{width:auto}
+
+/* v1.0.18: windowed list (only visible rows are rendered, so folders with tens of thousands of items stay fast) */
+table.vt{border-collapse:separate;border-spacing:0}
+table.vt tbody td{height:41px;box-sizing:border-box;padding-top:0;padding-bottom:0;vertical-align:middle}
+table.vt tbody tr{animation:none}
+table.vt tr.vsp td{padding:0;border:0;max-width:none}
+table.vt tbody td{border-bottom:1px solid var(--line)}
+table.vt tr.vsp td{border-bottom:0}
