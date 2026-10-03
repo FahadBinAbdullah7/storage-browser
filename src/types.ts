@@ -19,7 +19,7 @@ export interface Conn {
 export interface Folder { prefix: string; name: string }
 export interface FileItem { key: string; name: string; size: number; lastModified?: string }
 export interface Transfer {
-  id: string; name: string; kind: 'upload' | 'download'
+  id: string; name: string; kind: 'upload' | 'download'; key?: string
   loaded: number; total: number; state: 'active' | 'done' | 'error'; error?: string
 }
 export type UpdateState =

@@ -111,7 +111,7 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 - **Download** files or entire folders
 - **New folder, rename, duplicate, and delete files** — for safety, **folders and buckets can never be deleted** from Cloudpeek
 - **Cut / copy / paste** and **drag onto a folder** to move
-- **Search bar** right under the toolbar: type 2+ letters and pick **This folder**, **Include subfolders** or **Whole bucket**, and choose **Folders & files**, **Folders only** or **Files only**. It finds **folders and files** at any depth, scans many folders in parallel, and shows results live as it goes (Esc clears it)
+- **Search bar** right under the toolbar: type 2+ letters and choose **Folders & files**, **Folders only** or **Files only**. It always searches the folder you are in and everything inside it. It finds **folders and files** at any depth, scans many folders in parallel, and shows results live as it goes (Esc clears it)
 - **Searchable bucket list** to find a bucket fast, and **create new buckets** (buckets cannot be deleted)
 
 **Links and sharing**
@@ -120,7 +120,8 @@ Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](http
 - Copy **S3 URI** (`s3://bucket/key`), copy **path**, **Open in browser**
 
 **Inspect and tune**
-- **Info panel** (Ctrl/⌘+I): size, modified, ETag, storage class, folder totals
+- **File details drawer**: click any file or folder and a panel slides up with its name, full path, source URI and CDN link (each with a Copy button), size, modified date and folder. Row buttons give one-click Preview ▶, Copy link, Details and Rename
+- **Upload summary**: after uploading, a popup lists every link (CDN, path, S3 URI, optional signed link) with Copy buttons
 - Edit **Content-Type** and **Cache-Control** with one-click presets
 
 **D1**

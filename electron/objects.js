@@ -262,18 +262,18 @@ async function upload(c, bucket, prefix, paths, onProgress) {
   for (const it of items) {
     const id = `up:${Date.now()}:${it.rel}`
     const key = prefix + it.rel
-    onProgress({ id, name: it.rel, kind: 'upload', loaded: 0, total: it.size, state: 'active' })
+    onProgress({ id, name: it.rel, kind: 'upload', key, loaded: 0, total: it.size, state: 'active' })
     try {
       const u = new Upload({
         client: client(c),
         params: { Bucket: bucket, Key: key, Body: fs.createReadStream(it.file), ContentType: mime.lookup(it.file) || 'application/octet-stream' },
         queueSize: 4, partSize: 8 * 1024 * 1024,
       })
-      u.on('httpUploadProgress', (p) => onProgress({ id, name: it.rel, kind: 'upload', loaded: p.loaded || 0, total: it.size, state: 'active' }))
+      u.on('httpUploadProgress', (p) => onProgress({ id, name: it.rel, kind: 'upload', key, loaded: p.loaded || 0, total: it.size, state: 'active' }))
       await u.done()
-      onProgress({ id, name: it.rel, kind: 'upload', loaded: it.size, total: it.size, state: 'done' })
+      onProgress({ id, name: it.rel, kind: 'upload', key, loaded: it.size, total: it.size, state: 'done' })
     } catch (e) {
-      onProgress({ id, name: it.rel, kind: 'upload', loaded: 0, total: it.size, state: 'error', error: e.message })
+      onProgress({ id, name: it.rel, kind: 'upload', key, loaded: 0, total: it.size, state: 'error', error: e.message })
     }
   }
 }

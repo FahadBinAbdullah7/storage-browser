@@ -49,6 +49,7 @@ export default function App() {
       <div className="layout">
         <aside className="sidebar">
           <div className="drag" />
+          <div className="brand"><span className="brand-ico"><Icon name="cloud" size={15} /></span><b>Cloudpeek</b><span className="ver">v{version}</span></div>
           <div className="side-head">
             <span>Connections</span>
             <button className="icon-btn" title="New connection" onClick={() => setEditing({ type: 'r2' })}><Icon name="plus" /></button>
