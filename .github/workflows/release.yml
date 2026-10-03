@@ -69,3 +69,20 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+
+  # Keep only the newest release: once this one is public, delete every older published release.
+  # (Drafts are left alone, and this job only runs if the build and publish steps succeeded.)
+  cleanup:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          [ -n "$TAG" ] && [ -n "$REPO" ] || { echo 'missing tag or repo, refusing to delete anything'; exit 1; }
+          gh api "repos/$REPO/releases" --paginate --jq ".[] | select(.draft==false and .tag_name!=\"$TAG\") | [.id, .tag_name] | @tsv" | while IFS=$'\t' read -r id tag; do
+            echo "Deleting old release $tag"
+            gh api -X DELETE "repos/$REPO/releases/$id"
+          done

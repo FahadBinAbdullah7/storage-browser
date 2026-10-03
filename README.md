@@ -15,7 +15,7 @@ Open any bucket, play videos, preview images, upload and download files, rename 
 | **Mac, Apple Silicon** (M1, M2, M3, M4) | [Cloudpeek-Mac-arm64.dmg](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest/download/Cloudpeek-Mac-arm64.dmg) |
 | **Mac, Intel** | [Cloudpeek-Mac-x64.dmg](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest/download/Cloudpeek-Mac-x64.dmg) |
 
-All versions and release notes: <https://github.com/FahadBinAbdullah7/storage-browser/releases>
+The links above always give the **newest** version — only the latest release is kept on the [Releases page](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest).
 
 Not sure which Mac you have? Apple menu → **About This Mac**. If it says *Chip: Apple M…* pick **arm64**; if it says *Processor: Intel…* pick **x64**.
 
