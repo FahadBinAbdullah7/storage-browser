@@ -82,6 +82,7 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <label>Account ID<input value={f.accountId} onChange={set('accountId')} /></label>
           <label>Access Key ID<input value={f.accessKeyId} onChange={set('accessKeyId')} /></label>
           <label>Secret Access Key{keep}<input type="password" value={f.secretAccessKey} onChange={set('secretAccessKey')} /></label>
+          <label>Cloudflare API token (optional) — lists <i>all</i> your buckets automatically{keep}<input type="password" value={f.apiToken} onChange={set('apiToken')} placeholder="needs the “Workers R2 Storage: Read” permission" /></label>
           <label>Bucket name(s) — fill this in if your key is limited to a bucket<input value={f.defaultBucket} onChange={set('defaultBucket')} placeholder="e.g. my-bucket, my-other-bucket" /></label>
           <label>Allowed folders (optional) — only if the key is limited to certain folders, one per line<textarea rows={2} value={f.folders} onChange={(e) => setF({ ...f, folders: e.target.value })} placeholder={'Skills\nK12/OB_27'} /></label>
           <label>CDN / public domain (optional) — used for “Copy link”<input value={f.publicBase} onChange={set('publicBase')} placeholder="https://cdn.example.com" /></label>

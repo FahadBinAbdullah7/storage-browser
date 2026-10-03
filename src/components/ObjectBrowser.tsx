@@ -42,7 +42,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [loadingMore, setLoadingMore] = useState(false)
   const searchSeq = useRef(0)
   const sidRef = useRef('')
-  const [kind, setKind] = useState<'all' | 'folders' | 'files'>('all')
+  const kind = 'all' as 'all' | 'folders' | 'files' // search always covers folders and files
   const deep = true
   const [deepRes, setDeepRes] = useState<{ files: FileItem[]; folders: Folder[] } | null>(null)
   const [hoverDir, setHoverDir] = useState('')
@@ -356,6 +356,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   if (!bucket) return (
     <div className="browser fade">
       <div className="toolbar"><h2 className="title">{conn.name}</h2><span className="chip">Buckets</span><span className="grow" />
+        <button onClick={() => setAsk({ title: 'Open a bucket by name', label: 'Bucket name', onSubmit: (v) => { if (v) { setBucket(v); setPrefix('') } } })}><Icon name="search" size={14} /> Open a bucket by name</button>
         <button className="primary" onClick={() => setAsk({ title: 'New bucket', label: 'Bucket name (lowercase letters, numbers, hyphens)', onSubmit: async (v) => { if (v && await guard(window.api.obj.createBucket(conn.id, v)) !== undefined) { toast('Bucket created'); setBuckets((b) => [...(b || []), { name: v }]) } } })}><Icon name="plus" /> New bucket</button></div>
       {loading && <div className="skel-list">{[0, 1, 2, 3].map((i) => <div key={i} className="skel" style={{ animationDelay: i * 60 + 'ms' }} />)}</div>}
       {error && <div className="empty-state"><Icon name="cloud" size={42} /><h3>Couldn't connect</h3><p className="muted">{error}</p><button className="primary" onClick={() => location.reload()}>Retry</button></div>}
@@ -381,7 +382,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           </div>
         )
       })()}
-      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets listed</h3><p className="muted">Keys limited to one bucket can't list buckets. Type the bucket name to open it:</p><div className="search-box wide"><Icon name="bucket" size={14} /><input autoFocus placeholder="bucket name, then Enter" value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && bucketQ.trim()) { setBucket(bucketQ.trim()); setPrefix('') } }} /></div></div>}
+      {buckets && !buckets.length && <div className="empty-state"><Icon name="bucket" size={42} /><h3>No buckets listed</h3><p className="muted">This key is limited to specific buckets, so Cloudflare won't list them. Type a bucket name to open it (Cloudpeek remembers it), or edit the connection and add a Cloudflare API token to list every bucket automatically:</p><div className="search-box wide"><Icon name="bucket" size={14} /><input autoFocus placeholder="bucket name, then Enter" value={bucketQ} onChange={(e) => setBucketQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && bucketQ.trim()) { setBucket(bucketQ.trim()); setPrefix('') } }} /></div></div>}
     </div>
   )
 
@@ -420,13 +421,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       <div className="searchbar">
         <div className="search-big">
           <Icon name="search" size={16} />
-          <input ref={filterRef} placeholder="Search folders &amp; files in this folder and everything inside…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input ref={filterRef} placeholder={`Search in ${prefix ? prefix.replace(/\/$/, '') : bucket} (this folder and everything inside)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
           {filter && <button className="icon-btn sm" title="Clear (Esc)" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
-        </div>
-        <div className="seg labeled" title="What to look for">
-          <button className={kind === 'all' ? 'on' : ''} onClick={() => setKind('all')}>Folders &amp; files</button>
-          <button className={kind === 'folders' ? 'on' : ''} onClick={() => setKind('folders')}>Folders only</button>
-          <button className={kind === 'files' ? 'on' : ''} onClick={() => setKind('files')}>Files only</button>
         </div>
       </div>
       {search && (

@@ -24,7 +24,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
   const [error, setError] = useState('')
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
-  const [kind, setKind] = useState<'all' | 'folders' | 'files'>('all')
+  const kind = 'all' as 'all' | 'folders' | 'files'
   const [found, setFound] = useState<NasItem[] | null>(null)
   const [search, setSearch] = useState<{ scanned: number; done: boolean; capped: boolean } | null>(null)
   const [preview, setPreview] = useState<NasItem | null>(null)
@@ -148,13 +148,8 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
       <div className="searchbar">
         <div className="search-big">
           <Icon name="search" size={16} />
-          <input placeholder="Search folders & files in this folder and everything inside…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input placeholder={`Search in ${cwd === '/' ? conn.name : cwd} (this folder and everything inside)…`} value={filter} onChange={(e) => setFilter(e.target.value)} />
           {filter && <button className="icon-btn sm" onClick={() => setFilter('')}><Icon name="close" size={14} /></button>}
-        </div>
-        <div className="seg labeled">
-          <button className={kind === 'all' ? 'on' : ''} onClick={() => setKind('all')}>Folders &amp; files</button>
-          <button className={kind === 'folders' ? 'on' : ''} onClick={() => setKind('folders')}>Folders only</button>
-          <button className={kind === 'files' ? 'on' : ''} onClick={() => setKind('files')}>Files only</button>
         </div>
       </div>
       {search && (

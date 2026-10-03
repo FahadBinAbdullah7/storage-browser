@@ -72,9 +72,13 @@ function client(c) {
   return cl
 }
 
+// Keys limited to specific buckets are refused when they ask the account for its bucket list.
+// That is a normal situation (not a failure), so it must not block the user from opening a bucket.
+const BAD_KEY = ['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'InvalidToken', 'ExpiredToken', 'AuthorizationHeaderMalformed']
+const cantList = (e) => !BAD_KEY.includes(e?.name) && (e?.name === 'AccessDenied' || e?.$metadata?.httpStatusCode === 403)
+
 async function listBuckets(c) {
-  // Names typed into the connection (comma/space separated). Keys limited to one bucket can't
-  // list buckets at all, so these are always offered in addition to whatever the account lists.
+  // Names typed into the connection (comma/space separated) or opened once before.
   const extra = (c.defaultBucket || '').split(/[,\s]+/).filter(Boolean)
   let list = []
   let listErr = null
@@ -84,15 +88,24 @@ async function listBuckets(c) {
   } catch (e) {
     listErr = e
   }
+  // Optional: a Cloudflare API token (with "R2 Read") can list every bucket of the account,
+  // even when the storage keys themselves are limited to one bucket.
+  if (c.type === 'r2' && c.apiToken && c.accountId) {
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${c.accountId}/r2/buckets?per_page=1000`, { headers: { Authorization: `Bearer ${c.apiToken}` } })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || j.success === false) throw new Error(j.errors?.[0]?.message || `Cloudflare API error (${res.status})`)
+      for (const b of j.result?.buckets || []) if (!list.some((x) => x.name === b.name)) list.push({ name: b.name, created: b.creation_date })
+      listErr = null
+    } catch (e) { if (!list.length) listErr = listErr || e }
+  }
   for (const n of extra) if (!list.some((b) => b.name === n)) list.push({ name: n })
-  // Keys limited to specific buckets can't list them (403). Probe the known names and keep
-  // the ones this key can open, so those buckets still show up on their own.
   if (!list.length) {
     await Promise.all(KNOWN_BUCKETS.map(async (n) => {
       try { await client(c).send(new ListObjectsV2Command({ Bucket: n, MaxKeys: 1 })); list.push({ name: n }) } catch { /* no access */ }
     }))
   }
-  if (!list.length && listErr) throw listErr
+  if (!list.length && listErr && !cantList(listErr)) throw listErr
   return list
 }
 

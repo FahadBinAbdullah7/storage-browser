@@ -76,6 +76,7 @@ Click **＋** in the sidebar (or one of the cards on the welcome screen), pick a
 | **Account ID** | Cloudflare dashboard → **R2** → right-hand panel, or the dashboard URL |
 | **Access Key ID** / **Secret Access Key** | R2 → **Manage API tokens** → **Create API token** (Object Read & Write). The secret is shown only once. |
 | **Bucket** *(optional)* | Only needed for tokens scoped to a single bucket (they can't list all buckets) |
+| **Cloudflare API token** *(optional)* | Lets Cloudpeek list **every** bucket of the account automatically, even when the storage keys are limited to one bucket. Create it at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) with the permission *Workers R2 Storage → Read* |
 | **CDN / public domain** *(optional)* | Your public domain for the bucket, e.g. `https://cdn.example.com` |
 
 Docs: [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/) · [R2 public buckets & custom domains](https://developers.cloudflare.com/r2/buckets/public-buckets/)
