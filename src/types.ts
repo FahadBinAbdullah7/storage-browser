@@ -1,4 +1,4 @@
-export type ConnType = 's3' | 'r2' | 'd1' | 'gdrive'
+export type ConnType = 's3' | 'r2' | 'd1' | 'nas'
 
 export interface Conn {
   id: string
@@ -10,9 +10,16 @@ export interface Conn {
   accountId?: string
   defaultBucket?: string
   folders?: string
-  email?: string
-  clientId?: string
-  has_refreshToken?: boolean
+  protocol?: 'smb' | 'sftp' | 'webdav'
+  host?: string
+  port?: number | string
+  username?: string
+  share?: string
+  basePath?: string
+  domain?: string
+  secure?: boolean
+  insecureTls?: boolean
+  has_password?: boolean
   publicBase?: string
   publicUrls?: Record<string, string>
   has_secretAccessKey?: boolean
@@ -61,20 +68,20 @@ declare global {
         pickUpload(id: string, b: string, prefix: string, dir: boolean): R<boolean>
         download(id: string, b: string, keys: string[]): R<boolean>
       }
-      gd: {
-        signIn(i: Record<string, unknown>): R<string>
-        drives(id: string): R<{ id: string; name: string; shared?: boolean }[]>
-        list(id: string, d: string, f: string, t: string | null): R<{ items: DriveItem[]; nextToken: string | null }>
-        search(id: string, d: string, q: string, kind: string): R<DriveItem[]>
-        info(id: string, f: string): R<DriveItem & { created?: string; owner?: string }>
-        mkdir(id: string, p: string, n: string): R<{ id: string }>
+      nas: {
+        discover(): R<{ name: string; host: string; port: number; protocol: 'smb' | 'sftp' | 'webdav'; secure?: boolean }[]>
+        shares(i: Record<string, unknown>): R<string[]>
+        list(id: string, p: string): R<NasItem[]>
+        mkdir(id: string, d: string, n: string): R<void>
         rename(id: string, f: string, n: string): R<void>
-        trash(id: string, ids: string[]): R<void>
-        share(id: string, f: string): R<{ view: string; download: string }>
-        previewUrl(id: string, f: string, m: string): R<string>
-        upload(id: string, p: string, paths: string[]): R<boolean>
-        pickUpload(id: string, p: string, dir: boolean): R<boolean>
-        download(id: string, d: string, items: DriveItem[]): R<boolean>
+        remove(id: string, ps: string[]): R<void>
+        search(id: string, root: string, q: string, kind: string, sid: string): R<boolean>
+        searchCancel(sid: string): R<void>
+        previewUrl(id: string, p: string): R<string>
+        disconnect(id: string): R<void>
+        upload(id: string, d: string, ps: string[]): R<boolean>
+        pickUpload(id: string, d: string, dir: boolean): R<boolean>
+        download(id: string, items: NasItem[]): R<boolean>
       }
       d1: {
         databases(id: string): R<{ id: string; name: string; size?: number; tables?: number }[]>
@@ -98,4 +105,5 @@ export interface FullHead { size: number; contentType: string; cacheControl: str
 
 export interface SearchProgress { id: string; files: FileItem[]; folders: Folder[]; scanned: number; done: boolean; capped: boolean }
 
-export interface DriveItem { id: string; name: string; mimeType: string; isFolder: boolean; size: number; modifiedTime?: string; link?: string }
+
+export interface NasItem { name: string; path: string; isFolder: boolean; size: number; mtime: string | null }

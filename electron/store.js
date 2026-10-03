@@ -2,7 +2,7 @@ const { app, safeStorage } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
-const SECRET_FIELDS = ['secretAccessKey', 'apiToken', 'refreshToken', 'clientSecret']
+const SECRET_FIELDS = ['secretAccessKey', 'apiToken', 'password']
 const file = () => path.join(app.getPath('userData'), 'connections.json')
 
 const enc = (v) => {
@@ -37,7 +37,7 @@ function get(id) {
 
 // Safe for the renderer: secrets replaced by a boolean flag.
 function listPublic() {
-  return readAll().map((c) => {
+  return readAll().filter((c) => c.type !== 'gdrive').map((c) => {
     const out = { ...c }
     for (const f of SECRET_FIELDS) { out['has_' + f] = !!c[f]; delete out[f] }
     return out

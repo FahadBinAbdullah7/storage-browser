@@ -4,15 +4,15 @@ import { call } from './util'
 import ConnectionDialog from './components/ConnectionDialog'
 import ObjectBrowser from './components/ObjectBrowser'
 import D1Browser from './components/D1Browser'
-import DriveBrowser from './components/DriveBrowser'
+import NasBrowser from './components/NasBrowser'
 import Icon from './components/Icon'
 
-const LABEL = { s3: 'S3', r2: 'R2', d1: 'D1', gdrive: 'Drive' } as const
+const LABEL = { s3: 'S3', r2: 'R2', d1: 'D1', nas: 'NAS' } as const
 const CARDS = [
   { t: 'r2', title: 'Cloudflare R2', desc: 'Account ID + access keys', icon: 'cloud' },
   { t: 's3', title: 'Amazon S3', desc: 'Access key + secret (or any S3-compatible)', icon: 'bucket' },
   { t: 'd1', title: 'Cloudflare D1', desc: 'Account ID + API token', icon: 'db' },
-  { t: 'gdrive', title: 'Google Drive', desc: 'Sign in with your Google account', icon: 'folder' },
+  { t: 'nas', title: 'NAS / network', desc: 'SMB, SFTP or WebDAV with a username and password', icon: 'folder' },
 ] as const
 
 export default function App() {
@@ -60,7 +60,7 @@ export default function App() {
             {conns.length === 0 && <p className="muted pad small">No connections yet.</p>}
             {conns.map((c) => (
               <div key={c.id} className={'conn' + (c.id === activeId ? ' on' : '')} onClick={() => setActiveId(c.id)}>
-                <span className={'tag ' + c.type}><Icon name={c.type === 'd1' ? 'db' : c.type === 'r2' ? 'cloud' : c.type === 'gdrive' ? 'folder' : 'bucket'} size={13} />{LABEL[c.type]}</span>
+                <span className={'tag ' + c.type}><Icon name={c.type === 'd1' ? 'db' : c.type === 'r2' ? 'cloud' : c.type === 'nas' ? 'folder' : 'bucket'} size={13} />{LABEL[c.type]}</span>
                 <span className="grow ellipsis">{c.name}</span>
                 <button className="icon-btn sm" title="Edit" onClick={(e) => { e.stopPropagation(); setEditing(c) }}><Icon name="settings" size={14} /></button>
               </div>
@@ -92,8 +92,8 @@ export default function App() {
             </div>
           )}
           {active && active.type === 'd1' && <D1Browser key={active.id} conn={active} />}
-          {active && active.type === 'gdrive' && <DriveBrowser key={active.id} conn={active} />}
-          {active && active.type !== 'd1' && active.type !== 'gdrive' && <ObjectBrowser key={active.id} conn={active} onChanged={reload} />}
+          {active && active.type === 'nas' && <NasBrowser key={active.id} conn={active} />}
+          {active && active.type !== 'd1' && active.type !== 'nas' && <ObjectBrowser key={active.id} conn={active} onChanged={reload} />}
         </main>
       </div>
       {editing && (

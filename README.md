@@ -1,6 +1,6 @@
 # Cloudpeek
 
-**A fast, friendly desktop browser for Amazon S3, Cloudflare R2, Cloudflare D1 and Google Drive** — in the spirit of Cyberduck.
+**A fast, friendly desktop browser for Amazon S3, Cloudflare R2, Cloudflare D1 and your NAS** — in the spirit of Cyberduck.
 Open any bucket, play videos, preview images, upload and download files, rename and move things around, and copy CDN links in one click. Each person enters their **own** keys in the app; nothing is shared and nothing is sent anywhere except to your own storage provider.
 
 [![Latest release](https://img.shields.io/github/v/release/FahadBinAbdullah7/storage-browser?label=latest)](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest)
@@ -99,25 +99,21 @@ D1 does not use R2/S3 keys. You need:
 
 Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](https://developers.cloudflare.com/api/resources/d1/)
 
-### Google Drive
+### NAS (network storage)
 
-Click **＋ → Drive → Sign in with Google**. Your browser opens **Google's own sign-in page**; you type your Google email and password **there** (Cloudpeek never sees the password) and approve access. Cloudpeek keeps only a permission token, encrypted on your computer, and shows **your own** Drive and the shared drives you can reach — whichever organisation your account belongs to. Nothing about any organisation is built into the app.
+Click **＋ → NAS**, pick how your NAS shares files, and sign in with its **username and password**:
 
-You can browse, search the whole drive by name, upload files and folders, download, preview (video, audio, images, PDF), rename, create folders and copy links. Deleting moves **files** to the Drive trash; folders can't be deleted from the app.
+| Protocol | Good for | You enter |
+| --- | --- | --- |
+| **SMB** ("Windows share") | Synology, QNAP, TrueNAS, Windows/Mac file sharing | NAS address, username, password, **share name** |
+| **SFTP** | NAS or server with SSH/SFTP switched on | NAS address, username, password |
+| **WebDAV** | Synology WebDAV Server, QNAP WebDAV, Nextcloud | NAS address, username, password, port, HTTPS option |
 
-**Why a Client ID?** Google does not let any app sign users in without a *Client ID* — there is no way to connect with just an email and a code (Google removed the copy-and-paste code flow in 2022). The Client ID is not a password and not tied to one person: it just identifies the app to Google. **Create it once per organisation** (an admin does this; everyone else only signs in):
-
-1. Open the [Google Cloud console](https://console.cloud.google.com/) with an admin account and create a project (for example "Cloudpeek").
-2. **APIs & Services → Library** → enable **Google Drive API**.
-3. **APIs & Services → OAuth consent screen**:
-   - **Internal** (Google Workspace): any account in *your* organisation can sign in, no Google review needed. Recommended for company use.
-   - **External**: add each person as a *test user*, or complete Google's app verification to allow anyone.
-4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID** and **Client secret**.
-5. In Cloudpeek: **＋ → Drive**, click **Sign in with Google**, paste the Client ID and secret in the box that appears, then sign in. Cloudpeek remembers them for your next Google connection on that computer. (To pre-fill them for everyone you distribute the app to, put them in `electron/oauth.json` before building.)
-
-Docs: [Google OAuth for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app) · [Drive API](https://developers.google.com/drive/api/guides/about-sdk)
-
-> Drive's full-access scope is *restricted*: a public **External** app for many organisations needs Google's verification. That is why the per-organisation Client ID above is the simplest route.
+- **Find NAS devices on my network** scans for devices that announce themselves (Bonjour/mDNS) and fills in the address for you; otherwise type the address, such as `192.168.1.20` or `mynas.local`.
+- For SMB, **List the shares on this NAS** shows the shares your account can see; click one.
+- Your computer must be on the same network (or VPN) as the NAS. The first scan on macOS asks permission to find devices on the local network — allow it.
+- Browse, search (folders and files, any depth), upload files and folders, download, rename, create folders and preview video, audio, images and PDF straight from the NAS. Deleting works for **files only**; folders can't be deleted from the app.
+- SMB uses your operating system's built-in SMB support (macOS and Windows), so every SMB version your NAS speaks works. SFTP remembers the server's fingerprint the first time and refuses to connect if it ever changes.
 
 ---
 
@@ -179,6 +175,7 @@ Right-click any item for the full menu.
 
 | Problem | Fix |
 | --- | --- |
+| NAS: *Authentication error* or can't connect | Check the username/password, that the share name is right (use **List the shares**), and that SMB/SFTP/WebDAV is turned on in the NAS settings. SMB needs macOS or Windows. |
 | Buckets don't show up automatically | Cloudflare only lets **account-wide** keys list buckets; keys limited to specific buckets get a 403 (see [R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/)). Type the bucket name(s) in the connection (comma-separated), or type a name on the bucket screen and press Enter; Cloudpeek remembers it for that connection. |
 | *Access Denied* when listing buckets, or the bucket looks empty | Your key may be limited to one bucket or to certain folders. Edit the connection: type the **bucket name(s)** (comma-separated) and, if needed, the **Allowed folders** (one per line). You can also type a bucket name on the bucket screen and press Enter. |
 | R2 connection fails | Check the Account ID, and that the key is an **R2 API token** (not a Cloudflare Global API key). |

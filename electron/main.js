@@ -5,7 +5,7 @@ const store = require('./store')
 const objects = require('./objects')
 const d1 = require('./d1')
 const updater = require('./updater')
-const google = require('./google')
+const nas = require('./nas')
 
 const DEV = !!process.env.VITE_DEV
 let win
@@ -40,6 +40,7 @@ app.whenReady().then(() => {
   upd = updater.setup(send('update'))
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow() })
 })
+app.on('before-quit', () => { nas.closeAll().catch(() => {}) })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 
 // Wrap handlers so errors reach the renderer as readable messages.
@@ -60,8 +61,8 @@ h('conn:list', () => store.listPublic())
 h('conn:save', (c) => store.save({ ...c, id: c.id || crypto.randomUUID() }))
 h('conn:remove', (id) => store.remove(id))
 h('conn:test', async (c) => {
-  const full = c.id ? { ...store.get(c.id), ...Object.fromEntries(Object.entries(c).filter(([, v]) => v)) } : c
-  if (full.type === 'gdrive') { const d = await google.drives(full); return `Signed in as ${full.email || 'Google'}. ${d.length} drive(s) available.` }
+  const full = c.id ? { ...store.get(c.id), ...Object.fromEntries(Object.entries(c).filter(([, v]) => v !== '' && v !== undefined && v !== null)) } : c
+  if (full.type === 'nas') return nas.test(full)
   if (full.type === 'd1') { const dbs = await d1.databases(full); return `Connected. ${dbs.length} database(s).` }
   const b = await objects.listBuckets(full)
   return `Connected. ${b.length} bucket(s).`
@@ -119,52 +120,28 @@ h('d1:tables', (id, db) => d1.tables(C(id), db))
 h('d1:browse', (id, db, t, l, o) => d1.browse(C(id), db, t, l, o))
 h('d1:query', (id, db, sql) => d1.query(C(id), db, sql))
 
-// ---- Google Drive
-h('g:signIn', async (input) => {
-  const prev = input.id ? store.get(input.id) : {}
-  // A Client ID typed for one Google connection is reused for the next, so it is only entered once.
-  const other = store.listPublic().filter((x) => x.type === 'gdrive' && x.clientId && x.id !== input.id).map((x) => store.get(x.id))[0] || {}
-  const clientId = input.clientId || prev.clientId || other.clientId || ''
-  const clientSecret = input.clientSecret || prev.clientSecret || other.clientSecret || ''
-  const r = await google.signIn({ clientId, clientSecret })
-  const id = input.id || crypto.randomUUID()
-  store.save({ id, type: 'gdrive', name: input.name || prev.name || r.email, email: r.email, refreshToken: r.refreshToken, clientId, clientSecret })
-  return id
-})
-h('g:drives', (id) => google.drives(C(id)))
-h('g:list', (id, drive, folder, token) => google.list(C(id), drive, folder, token))
-h('g:search', (id, drive, q, kind) => google.search(C(id), drive, q, kind))
-h('g:info', (id, fid) => google.info(C(id), fid))
-h('g:mkdir', (id, parent, name) => google.mkdir(C(id), parent, name))
-h('g:rename', (id, fid, name) => google.rename(C(id), fid, name))
-h('g:trash', (id, ids) => google.trash(C(id), ids))
-h('g:share', (id, fid) => google.share(C(id), fid))
-h('g:previewUrl', (id, fid, mimeType) => google.previewUrl(id, fid, mimeType))
-h('g:upload', (id, parent, paths) => { google.upload(C(id), parent, paths, send('transfer')); return true })
-h('g:pickUpload', async (id, parent, dir) => {
-  const r = await dialog.showOpenDialog(win, { properties: [dir ? 'openDirectory' : 'openFile', ...(dir ? [] : ['multiSelections'])] })
+
+// ---- NAS (SMB / SFTP / WebDAV)
+h('nas:discover', () => nas.discover())
+h('nas:shares', (input) => nas.smbShares(input))
+h('nas:list', (id, p) => nas.list(id, p))
+h('nas:mkdir', (id, dir, name) => nas.mkdir(id, dir, name))
+h('nas:rename', (id, from, name) => nas.rename(id, from, name))
+h('nas:remove', (id, paths) => nas.remove(id, paths))
+h('nas:search', (id, root, q, kind, sid) => nas.search(id, root, q, kind, sid, send('search')))
+h('nas:searchCancel', (sid) => nas.cancelSearch(sid))
+h('nas:previewUrl', (id, p) => nas.previewUrl(id, p))
+h('nas:disconnect', (id) => nas.disconnect(id))
+h('nas:upload', (id, dir, paths) => { nas.upload(id, dir, paths, send('transfer')).catch(() => {}); return true })
+h('nas:pickUpload', async (id, dir, isDir) => {
+  const r = await dialog.showOpenDialog(win, { properties: [isDir ? 'openDirectory' : 'openFile', ...(isDir ? [] : ['multiSelections'])] })
   if (r.canceled) return false
-  google.upload(C(id), parent, r.filePaths, send('transfer'))
+  nas.upload(id, dir, r.filePaths, send('transfer')).catch(() => {})
   return true
 })
-h('g:download', async (id, drive, items) => {
-  const c = C(id)
-  const progress = send('transfer')
-  if (items.length === 1 && !items[0].isFolder) {
-    const it = items[0]
-    const exp = google.EXPORTS[it.mimeType]
-    const r = await dialog.showSaveDialog(win, { defaultPath: exp && !it.name.endsWith(exp[1]) ? it.name + exp[1] : it.name })
-    if (r.canceled) return false
-    google.downloadTo(c, it, r.filePath, progress)
-    return true
-  }
+h('nas:download', async (id, items) => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: 'Download to…' })
   if (r.canceled) return false
-  ;(async () => {
-    for (const it of items) {
-      const files = it.isFolder ? (await google.allFiles(c, drive, it.id, it.name)) : [{ item: it, rel: it.name }]
-      for (const f of files) await google.downloadTo(c, f.item, path.join(r.filePaths[0], f.rel), progress)
-    }
-  })()
+  nas.download(id, items, r.filePaths[0], send('transfer')).catch(() => {})
   return true
 })

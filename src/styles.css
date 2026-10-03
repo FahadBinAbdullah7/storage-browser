@@ -254,4 +254,5 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .lk{display:flex;align-items:center;gap:8px}
 .lk-l{width:84px;flex:none;color:var(--muted);font-size:12px}
 .lk input{padding:6px 9px;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
-.tag.gdrive{background:#34a853}.c-ico.gdrive{background:#34a853}.drive-sel{width:auto;min-width:160px;padding:3px 8px;border-radius:8px}
+.tag.nas{background:#14b8a6}.c-ico.nas{background:#14b8a6}.found{display:flex;flex-wrap:wrap;gap:6px}.found button{font-size:12px;padding:4px 10px}
+.dialog label.check{flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:13px}.dialog label.check input{width:auto}

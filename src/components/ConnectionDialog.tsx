@@ -22,10 +22,21 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
     apiToken: '',
     defaultBucket: initial.defaultBucket || '',
     folders: initial.folders || '',
-    clientId: initial.clientId || '',
-    clientSecret: '',
     publicBase: initial.publicBase || '',
+    protocol: initial.protocol || 'smb',
+    host: initial.host || '',
+    port: initial.port ? String(initial.port) : '',
+    username: initial.username || '',
+    password: '',
+    domain: initial.domain || '',
+    share: initial.share || '',
+    basePath: initial.basePath || '',
+    secure: initial.secure ? '1' : '',
+    insecureTls: initial.insecureTls ? '1' : '',
   })
+  const [nasFound, setNasFound] = useState<{ name: string; host: string; port: number; protocol: 'smb' | 'sftp' | 'webdav'; secure?: boolean }[] | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [shares, setShares] = useState<string[]>([])
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const type = f.type as ConnType
@@ -33,26 +44,23 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
   const editing = !!initial.id
   const keep = editing ? ' (leave blank to keep)' : ''
 
-  const payload = () => ({ ...f, id: initial.id, publicUrls: initial.publicUrls })
+  const payload = () => ({ ...f, secure: f.secure === '1', insecureTls: f.insecureTls === '1', id: initial.id, publicUrls: initial.publicUrls })
+  const scan = async () => {
+    setScanning(true); setNasFound(null)
+    try { setNasFound(await call(window.api.nas.discover())) } catch { setNasFound([]) } finally { setScanning(false) }
+  }
+  const listShares = () => run(async () => {
+    const r = await call(window.api.nas.shares({ host: f.host, username: f.username, password: f.password, domain: f.domain }))
+    setShares(r)
+    setMsg({ ok: true, text: r.length ? `Found ${r.length} share(s). Click one below.` : 'Signed in, but no shares were listed. Type the share name yourself.' })
+  })
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setMsg(null)
     try { await fn() } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(false) }
   }
 
-  const [adv, setAdv] = useState(false)
-  const signIn = () => run(async () => {
-    try {
-      const id = await call(window.api.gd.signIn({ id: initial.id, name: f.name, clientId: f.clientId, clientSecret: f.clientSecret }))
-      onSaved(id)
-    } catch (e) {
-      const m = (e as Error).message
-      if (m.includes('NO_CLIENT_ID')) setAdv(true)
-      throw new Error(m.includes('NO_CLIENT_ID') ? 'First paste your organisation’s Google Client ID below (a one-time step — your admin creates it; see the README, “Google Drive”). After that, anyone can sign in with their own Google account.' : m)
-    }
-  })
-
   const valid =
-    type === 'gdrive' ? !!initial.has_refreshToken
+    type === 'nas' ? f.host && f.username && (f.password || initial.has_password) && (f.protocol !== 'smb' || f.share)
     : type === 'd1' ? f.accountId && (f.apiToken || initial.has_apiToken)
     : type === 'r2' ? f.accountId && f.accessKeyId && (f.secretAccessKey || initial.has_secretAccessKey)
     : f.accessKeyId && (f.secretAccessKey || initial.has_secretAccessKey)
@@ -62,9 +70,9 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
       <div className="dialog pop" onMouseDown={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Edit connection' : 'New connection'}</h3>
         <div className="tabs">
-          {(['r2', 's3', 'd1', 'gdrive'] as const).map((t) => (
+          {(['r2', 's3', 'd1', 'nas'] as const).map((t) => (
             <button key={t} className={type === t ? 'on' : ''} disabled={editing} onClick={() => setF({ ...f, type: t })}>
-              <Icon name={t === 'd1' ? 'db' : t === 'r2' ? 'cloud' : t === 'gdrive' ? 'folder' : 'bucket'} size={15} /> {t === 'r2' ? 'R2' : t === 's3' ? 'S3' : t === 'd1' ? 'D1' : 'Drive'}
+              <Icon name={t === 'd1' ? 'db' : t === 'r2' ? 'cloud' : t === 'nas' ? 'folder' : 'bucket'} size={15} /> {t === 'r2' ? 'R2' : t === 's3' ? 'S3' : t === 'd1' ? 'D1' : 'NAS'}
             </button>
           ))}
         </div>
@@ -93,15 +101,33 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <p className="muted small">D1 doesn't use R2 keys. Create an API token at dash.cloudflare.com → My Profile → API Tokens with <b>D1: Edit</b> (or Read) permission.</p>
         </>}
 
-        {type === 'gdrive' && <>
-          <p className="muted small">Cloudpeek opens Google's own sign-in page in your browser. Your Google password is typed there, never into Cloudpeek, and Cloudpeek only keeps a permission token on this computer.</p>
-          {initial.email && <div className="note ok">Signed in as {initial.email}</div>}
-          <button className="primary" disabled={busy} onClick={signIn}>{busy ? 'Waiting for Google…' : initial.id ? 'Sign in again with Google' : 'Sign in with Google'}</button>
-          <button className="ghost sm" onClick={() => setAdv((v) => !v)}>{adv ? 'Hide' : 'Google Client ID (needed once per organisation)'}</button>
-          {adv && <>
-            <label>Client ID<input value={f.clientId} onChange={set('clientId')} placeholder="123…apps.googleusercontent.com" /></label>
-            <label>Client secret{keep}<input type="password" value={f.clientSecret} onChange={set('clientSecret')} /></label>
+        {type === 'nas' && <>
+          <div className="tabs">
+            {(['smb', 'sftp', 'webdav'] as const).map((p) => <button key={p} className={f.protocol === p ? 'on' : ''} disabled={editing} onClick={() => setF({ ...f, protocol: p, port: '', share: '' })}>{p === 'smb' ? 'SMB (Windows share)' : p === 'sftp' ? 'SFTP' : 'WebDAV'}</button>)}
+          </div>
+          <div className="row">
+            <button onClick={scan} disabled={scanning}>{scanning ? <><div className="spinner sm" /> Looking…</> : <><Icon name="search" size={14} /> Find NAS devices on my network</>}</button>
+          </div>
+          {nasFound && (nasFound.length
+            ? <div className="found">{nasFound.map((d) => <button key={d.protocol + d.host} className="chip" onClick={() => setF({ ...f, host: d.host, protocol: d.protocol, port: d.port && ![445, 22].includes(d.port) ? String(d.port) : '', secure: d.secure ? '1' : '', name: f.name || d.name })}><Icon name="folder" size={12} /> {d.name} · {d.protocol.toUpperCase()} · {d.host}</button>)}</div>
+            : <p className="muted small">No devices announced themselves. Type the NAS address below (for example 192.168.1.20 or mynas.local).</p>)}
+          <label>NAS address<input value={f.host} onChange={set('host')} placeholder="192.168.1.20 or mynas.local" /></label>
+          <label>Username<input value={f.username} onChange={set('username')} autoComplete="off" /></label>
+          <label>Password{keep}<input type="password" value={f.password} onChange={set('password')} autoComplete="off" /></label>
+          {f.protocol === 'smb' && <>
+            <label>Share name<input value={f.share} onChange={set('share')} placeholder="e.g. video, home, public" /></label>
+            <div className="row"><button disabled={busy || !f.host || !f.username || !f.password} onClick={listShares}>List the shares on this NAS</button></div>
+            {shares.length > 0 && <div className="found">{shares.map((x) => <button key={x} className={'chip' + (f.share === x ? ' accent' : '')} onClick={() => setF({ ...f, share: x })}>{x}</button>)}</div>}
+            <label>Domain (optional — office networks only)<input value={f.domain} onChange={set('domain')} /></label>
           </>}
+          {f.protocol === 'sftp' && <label>Port (optional, default 22)<input value={f.port} onChange={set('port')} placeholder="22" /></label>}
+          {f.protocol === 'webdav' && <>
+            <label>Port (optional — Synology 5005 / 5006 for HTTPS)<input value={f.port} onChange={set('port')} placeholder={f.secure ? '5006' : '5005'} /></label>
+            <label>Folder on the server (optional)<input value={f.basePath} onChange={set('basePath')} placeholder="/home" /></label>
+            <label className="check"><input type="checkbox" checked={f.secure === '1'} onChange={(e) => setF({ ...f, secure: e.target.checked ? '1' : '' })} /> Use HTTPS</label>
+            {f.secure === '1' && <label className="check"><input type="checkbox" checked={f.insecureTls === '1'} onChange={(e) => setF({ ...f, insecureTls: e.target.checked ? '1' : '' })} /> My NAS uses a self-signed certificate</label>}
+          </>}
+          <p className="muted small">Your password is stored encrypted on this computer and sent only to your NAS.</p>
         </>}
 
         {msg && <div className={'note ' + (msg.ok ? 'ok' : 'bad')}>{msg.text}</div>}
@@ -110,7 +136,7 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button disabled={busy || !valid} onClick={() => run(async () => setMsg({ ok: true, text: await call(window.api.conn.test(payload())) }))}>Test</button>
           <button className="primary" disabled={busy || !valid} onClick={() => run(async () => {
-            const name = f.name || (type === 'd1' ? 'D1' : type === 'gdrive' ? 'Google Drive' : type.toUpperCase())
+            const name = f.name || (type === 'd1' ? 'D1' : type === 'nas' ? f.host || 'NAS' : type.toUpperCase())
             onSaved(await call(window.api.conn.save({ ...payload(), name })))
           })}>Save</button>
         </div>

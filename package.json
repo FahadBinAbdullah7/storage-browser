@@ -1,8 +1,8 @@
 {
   "name": "cloudpeek",
   "productName": "Cloudpeek",
-  "version": "1.0.11",
-  "description": "Cyberduck-style browser for AWS S3, Cloudflare R2 and D1",
+  "version": "1.0.12",
+  "description": "Browser for S3, R2, D1 and network storage (NAS)",
   "main": "electron/main.js",
   "author": "Cloudpeek",
   "license": "UNLICENSED",
@@ -29,7 +29,8 @@
       {
         "provider": "github",
         "owner": "FahadBinAbdullah7",
-        "repo": "storage-browser", "releaseType": "draft"
+        "repo": "storage-browser",
+        "releaseType": "draft"
       }
     ],
     "mac": {
@@ -39,7 +40,16 @@
         "zip"
       ],
       "artifactName": "Cloudpeek-Mac-${arch}.${ext}",
-      "identity": null
+      "identity": null,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Cloudpeek looks for NAS devices on your local network so you can connect to them.",
+        "NSBonjourServices": [
+          "_smb._tcp",
+          "_sftp-ssh._tcp",
+          "_webdav._tcp",
+          "_webdavs._tcp"
+        ]
+      }
     },
     "win": {
       "target": [
@@ -56,10 +66,13 @@
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/lib-storage": "^3.1146.0",
     "@aws-sdk/s3-request-presigner": "^3.1146.0",
+    "bonjour-service": "^1.4.4",
     "electron-updater": "^6.8.9",
     "mime-types": "^3.0.2",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "ssh2-sftp-client": "^12.1.1",
+    "webdav": "^5.11.0"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -69,8 +82,10 @@
     "cross-env": "^10.1.0",
     "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
+    "ssh2": "^1.17.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
-    "wait-on": "^9.5.1"
+    "wait-on": "^9.5.1",
+    "webdav-server": "^2.6.3"
   }
 }
