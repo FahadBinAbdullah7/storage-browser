@@ -35,6 +35,8 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [search, setSearch] = useState<{ scanned: number; done: boolean; capped: boolean } | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const searchSeq = useRef(0)
+  const sidRef = useRef('')
+  const [kind, setKind] = useState<'all' | 'folders' | 'files'>('all')
   const deep = scope !== 'here'
   const [deepRes, setDeepRes] = useState<{ files: FileItem[]; folders: Folder[] } | null>(null)
   const [hoverDir, setHoverDir] = useState('')
@@ -113,6 +115,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     const q = filter.trim()
     if (!deep || q.length < 2 || !bucket) { setDeepRes(null); setSearch(null); return }
     const sid = `s${++searchSeq.current}`
+    sidRef.current = sid
     const root = scope === 'bucket' ? '' : prefix
     setDeepRes({ files: [], folders: [] }); setSearch({ scanned: 0, done: false, capped: false })
     const off = window.api.onSearch((r: SearchProgress) => {
@@ -121,10 +124,10 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       setSearch({ scanned: r.scanned, done: r.done, capped: r.capped })
     })
     const t = setTimeout(() => {
-      guard(window.api.obj.search(conn.id, bucket, root, q, sid)).then(() => setSearch((x) => x && { ...x, done: true }))
+      guard(window.api.obj.search(conn.id, bucket, root, q, sid, kind)).then(() => setSearch((x) => x && { ...x, done: true }))
     }, 250)
     return () => { clearTimeout(t); off(); window.api.obj.searchCancel(sid) }
-  }, [scope, filter, bucket, prefix])
+  }, [scope, filter, bucket, prefix, kind])
 
   useEffect(() => window.api.onTransfer((t) => {
     setTransfers((m) => ({ ...m, [t.id]: t }))
@@ -139,10 +142,10 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
       return v * sort.dir
     }
     const pool = deepRes ? deepRes.files : files
-    const fo = (deepRes ? deepRes.folders : folders).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }))
-    const fi = pool.filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }))
+    const fo = (kind === 'files' ? [] : deepRes ? deepRes.folders : folders).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }))
+    const fi = (kind === 'folders' ? [] : pool).filter((x) => x.name.toLowerCase().includes(f)).map<Entry>((x) => ({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }))
     return [...fo.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), ...fi.sort(cmp)]
-  }, [folders, files, deepRes, filter, sort])
+  }, [folders, files, deepRes, filter, sort, kind])
 
   const crumbs = prefix.split('/').filter(Boolean)
   const publicBase = (bucket && conn.publicUrls?.[bucket]) || conn.publicBase || undefined
@@ -380,12 +383,17 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           <button className={scope === 'sub' ? 'on' : ''} onClick={() => setScope('sub')}>Include subfolders</button>
           <button className={scope === 'bucket' ? 'on' : ''} onClick={() => setScope('bucket')}>Whole bucket</button>
         </div>
+        <div className="seg labeled" title="What to look for">
+          <button className={kind === 'all' ? 'on' : ''} onClick={() => setKind('all')}>Folders &amp; files</button>
+          <button className={kind === 'folders' ? 'on' : ''} onClick={() => setKind('folders')}>Folders only</button>
+          <button className={kind === 'files' ? 'on' : ''} onClick={() => setKind('files')}>Files only</button>
+        </div>
       </div>
       {search && (
         <div className="search-status">
           {!search.done ? <><div className="spinner sm" /> Searching… {search.scanned.toLocaleString()} items checked · {(deepRes?.files.length || 0) + (deepRes?.folders.length || 0)} found</>
             : <>{(deepRes?.files.length || 0) + (deepRes?.folders.length || 0)} result(s){search.capped ? ' (showing the first 500 — type more letters to narrow down)' : ''} · {search.scanned.toLocaleString()} items checked</>}
-          {!search.done && <button className="ghost sm" onClick={() => { setFilter('') }}>Stop</button>}
+          {!search.done && <button className="ghost sm" onClick={() => { window.api.obj.searchCancel(sidRef.current); setSearch((x) => x && { ...x, done: true }) }}>Stop</button>}
         </div>
       )}
       <div className="actions">

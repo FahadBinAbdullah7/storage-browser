@@ -222,3 +222,4 @@ tr.drop,.tile.drop{background:var(--sel)!important;outline:2px dashed var(--acce
 .spinner.inl{display:inline-block;margin-right:8px;vertical-align:-3px}
 .side-foot{display:flex;justify-content:space-between;align-items:center}
 .muted-w{opacity:.8;font-size:12px}
+.searchbar{flex-wrap:wrap}.search-big{min-width:260px}

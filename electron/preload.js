@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     setMeta: (id, b, k, m) => invoke('obj:setMeta', id, b, k, m),
     copy: (id, b, f, t) => invoke('obj:copy', id, b, f, t),
     createBucket: (id, n) => invoke('obj:createBucket', id, n),
-    search: (id, b, p, q, sid) => invoke('obj:search', id, b, p, q, sid),
+    search: (id, b, p, q, sid, kind) => invoke('obj:search', id, b, p, q, sid, kind),
     searchCancel: (sid) => invoke('obj:searchCancel', sid),
     stats: (id, b, p) => invoke('obj:stats', id, b, p),
     mkdir: (id, b, p) => invoke('obj:mkdir', id, b, p),

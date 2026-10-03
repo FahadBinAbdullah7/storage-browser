@@ -176,7 +176,7 @@ const searches = new Map()
 const MAX_HITS = 500
 const CONCURRENCY = 16
 
-async function search(c, bucket, prefix, q, searchId, emit) {
+async function search(c, bucket, prefix, q, searchId, emit, kind = 'all') {
   const state = { cancelled: false }
   searches.set(searchId, state)
   const needle = q.toLowerCase()
@@ -198,14 +198,14 @@ async function search(c, bucket, prefix, q, searchId, emit) {
     do {
       if (stop()) return
       const r = await client(c).send(new ListObjectsV2Command({ Bucket: bucket, Prefix: pfx, Delimiter: '/', ContinuationToken: token }))
-      for (const o of r.Contents || []) {
+      for (const o of kind === 'folders' ? [] : r.Contents || []) {
         if (o.Key === pfx || o.Key.endsWith('/')) continue
         if (o.Key.slice(pfx.length).toLowerCase().includes(needle)) {
           files.push({ key: o.Key, name: o.Key.slice(prefix.length), size: o.Size, lastModified: o.LastModified?.toISOString() })
         }
       }
       for (const p of r.CommonPrefixes || []) {
-        if (p.Prefix.slice(pfx.length, -1).toLowerCase().includes(needle)) {
+        if (kind !== 'files' && p.Prefix.slice(pfx.length, -1).toLowerCase().includes(needle)) {
           folders.push({ prefix: p.Prefix, name: p.Prefix.slice(prefix.length).replace(/\/$/, '') })
         }
         queue.push(p.Prefix)
