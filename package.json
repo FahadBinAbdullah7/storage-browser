@@ -1,7 +1,7 @@
 {
   "name": "cloudpeek",
   "productName": "Cloudpeek",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Cyberduck-style browser for AWS S3, Cloudflare R2 and D1",
   "main": "electron/main.js",
   "author": "10ms",

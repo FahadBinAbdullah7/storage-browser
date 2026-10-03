@@ -1,6 +1,6 @@
 # Cloudpeek
 
-**A fast, friendly desktop browser for Amazon S3, Cloudflare R2 and Cloudflare D1** — in the spirit of Cyberduck.
+**A fast, friendly desktop browser for Amazon S3, Cloudflare R2, Cloudflare D1 and Google Drive** — in the spirit of Cyberduck.
 Open any bucket, play videos, preview images, upload and download files, rename and move things around, and copy CDN links in one click. Each person enters their **own** keys in the app; nothing is shared and nothing is sent anywhere except to your own storage provider.
 
 [![Latest release](https://img.shields.io/github/v/release/FahadBinAbdullah7/storage-browser?label=latest)](https://github.com/FahadBinAbdullah7/storage-browser/releases/latest)
@@ -98,6 +98,26 @@ D1 does not use R2/S3 keys. You need:
 - **API token** with **D1: Read** (or **Edit** to run write queries) — create one at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
 
 Docs: [D1 overview](https://developers.cloudflare.com/d1/) · [D1 REST API](https://developers.cloudflare.com/api/resources/d1/)
+
+### Google Drive
+
+Click **＋ → Drive → Sign in with Google**. Your browser opens Google's own sign-in page; you type your Google email and password **there** (Cloudpeek never sees the password) and approve access. Cloudpeek stores only a permission token, encrypted on your computer. My Drive and shared drives both appear, with browsing, search, upload, download, preview (video/audio/images/PDF), rename, new folder, and Copy link. Deleting moves **files** to the Drive trash; folders can't be deleted from the app.
+
+**One-time setup for whoever publishes the app** (users don't do this): Google requires every app that signs users in to have a *Client ID*.
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a project (for example "Cloudpeek").
+2. **APIs & Services → Library** → enable **Google Drive API**.
+3. **APIs & Services → OAuth consent screen**: choose **Internal** if your organisation uses Google Workspace (any account in your domain can sign in, no Google review needed). Otherwise choose **External** and add your team's addresses as *test users*.
+4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app**. Copy the **Client ID** and **Client secret**.
+5. Put them in `electron/oauth.json`:
+   ```json
+   { "google": { "clientId": "123…apps.googleusercontent.com", "clientSecret": "GOCSPX-…" } }
+   ```
+   then release a new version. (Google treats the secret of a desktop app as non-confidential. You can also skip this file and let a user paste a Client ID under **Advanced** in the sign-in dialog.)
+
+Docs: [Google OAuth for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app) · [Drive API](https://developers.google.com/drive/api/guides/about-sdk)
+
+> Drive's full-access scope is a *restricted* scope. An **External** app used by more than 100 people must pass Google's verification; an **Internal** app does not.
 
 ---
 

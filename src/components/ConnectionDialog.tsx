@@ -22,6 +22,8 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
     apiToken: '',
     defaultBucket: initial.defaultBucket || '',
     folders: initial.folders || '',
+    clientId: initial.clientId || '',
+    clientSecret: '',
     publicBase: initial.publicBase || '',
   })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -37,8 +39,20 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
     try { await fn() } catch (e) { setMsg({ ok: false, text: (e as Error).message }) } finally { setBusy(false) }
   }
 
+  const [adv, setAdv] = useState(false)
+  const signIn = () => run(async () => {
+    try {
+      const id = await call(window.api.gd.signIn({ id: initial.id, name: f.name, clientId: f.clientId, clientSecret: f.clientSecret }))
+      onSaved(id)
+    } catch (e) {
+      const m = (e as Error).message
+      throw new Error(m.includes('NO_CLIENT_ID') ? "Google sign-in isn't set up in this build yet. Open “Advanced” and paste a Google Client ID, or ask your admin (see the README: Google Drive setup)." : m)
+    }
+  })
+
   const valid =
-    type === 'd1' ? f.accountId && (f.apiToken || initial.has_apiToken)
+    type === 'gdrive' ? !!initial.has_refreshToken
+    : type === 'd1' ? f.accountId && (f.apiToken || initial.has_apiToken)
     : type === 'r2' ? f.accountId && f.accessKeyId && (f.secretAccessKey || initial.has_secretAccessKey)
     : f.accessKeyId && (f.secretAccessKey || initial.has_secretAccessKey)
 
@@ -47,9 +61,9 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
       <div className="dialog pop" onMouseDown={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Edit connection' : 'New connection'}</h3>
         <div className="tabs">
-          {(['r2', 's3', 'd1'] as const).map((t) => (
+          {(['r2', 's3', 'd1', 'gdrive'] as const).map((t) => (
             <button key={t} className={type === t ? 'on' : ''} disabled={editing} onClick={() => setF({ ...f, type: t })}>
-              <Icon name={t === 'd1' ? 'db' : t === 'r2' ? 'cloud' : 'bucket'} size={15} /> {t === 'r2' ? 'R2' : t === 's3' ? 'S3' : 'D1'}
+              <Icon name={t === 'd1' ? 'db' : t === 'r2' ? 'cloud' : t === 'gdrive' ? 'folder' : 'bucket'} size={15} /> {t === 'r2' ? 'R2' : t === 's3' ? 'S3' : t === 'd1' ? 'D1' : 'Drive'}
             </button>
           ))}
         </div>
@@ -78,13 +92,24 @@ export default function ConnectionDialog({ initial, onClose, onSaved, onDeleted 
           <p className="muted small">D1 doesn't use R2 keys. Create an API token at dash.cloudflare.com → My Profile → API Tokens with <b>D1: Edit</b> (or Read) permission.</p>
         </>}
 
+        {type === 'gdrive' && <>
+          <p className="muted small">Cloudpeek opens Google's own sign-in page in your browser. Your Google password is typed there, never into Cloudpeek, and Cloudpeek only keeps a permission token on this computer.</p>
+          {initial.email && <div className="note ok">Signed in as {initial.email}</div>}
+          <button className="primary" disabled={busy} onClick={signIn}>{busy ? 'Waiting for Google…' : initial.id ? 'Sign in again with Google' : 'Sign in with Google'}</button>
+          <button className="ghost sm" onClick={() => setAdv((v) => !v)}>{adv ? 'Hide' : 'Advanced: use my own Google Client ID'}</button>
+          {adv && <>
+            <label>Client ID<input value={f.clientId} onChange={set('clientId')} placeholder="123…apps.googleusercontent.com" /></label>
+            <label>Client secret{keep}<input type="password" value={f.clientSecret} onChange={set('clientSecret')} /></label>
+          </>}
+        </>}
+
         {msg && <div className={'note ' + (msg.ok ? 'ok' : 'bad')}>{msg.text}</div>}
         <div className="row end">
           {editing && <button className="danger left" disabled={busy} onClick={() => confirm('Delete this connection?') && run(async () => { await call(window.api.conn.remove(initial.id!)); onDeleted() })}>Delete</button>}
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button disabled={busy || !valid} onClick={() => run(async () => setMsg({ ok: true, text: await call(window.api.conn.test(payload())) }))}>Test</button>
           <button className="primary" disabled={busy || !valid} onClick={() => run(async () => {
-            const name = f.name || (type === 'd1' ? 'D1' : type.toUpperCase())
+            const name = f.name || (type === 'd1' ? 'D1' : type === 'gdrive' ? 'Google Drive' : type.toUpperCase())
             onSaved(await call(window.api.conn.save({ ...payload(), name })))
           })}>Save</button>
         </div>

@@ -2,7 +2,7 @@ const { app, safeStorage } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
-const SECRET_FIELDS = ['secretAccessKey', 'apiToken']
+const SECRET_FIELDS = ['secretAccessKey', 'apiToken', 'refreshToken', 'clientSecret']
 const file = () => path.join(app.getPath('userData'), 'connections.json')
 
 const enc = (v) => {
