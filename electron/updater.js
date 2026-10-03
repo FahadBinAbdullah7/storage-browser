@@ -59,20 +59,23 @@ function macUpdater(send, getState) {
     return m[1]
   }
 
+  // Reads latest-mac.yml from the release (a plain web download: GitHub's 60-requests-an-hour
+  // API limit does not apply, which matters when a whole office shares one IP address).
   async function check() {
     if (busy || (last() && ['downloading', 'ready'].includes(last().state))) return
     send({ state: 'checking' })
     try {
-      const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`, {
-        headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15000),
-      })
+      const res = await fetch(`https://github.com/${OWNER}/${REPO}/releases/latest/download/latest-mac.yml`, { redirect: 'follow', cache: 'no-store', signal: AbortSignal.timeout(15000) })
+      if (res.status === 404) return send({ state: 'none' }) // no release yet / still uploading
       if (!res.ok) throw new Error(`Update check failed (HTTP ${res.status})`)
-      const r = await res.json()
-      const latest = String(r.tag_name).replace(/^v/, '')
-      if (cmp(latest, app.getVersion()) <= 0) return send({ state: 'none' })
-      const a = (r.assets || []).find((x) => x.name === `Cloudpeek-Mac-${arch}.zip`)
-      if (!a) return send({ state: 'none' }) // release still uploading
-      release = r; asset = a
+      const yml = await res.text()
+      const latest = (/^version:\s*['"]?([\d.]+)/m.exec(yml) || [])[1]
+      if (!latest || cmp(latest, app.getVersion()) <= 0) return send({ state: 'none' })
+      const name = `Cloudpeek-Mac-${arch}.zip`
+      const block = new RegExp(`- url:\\s*${name.replace(/\./g, '\\.')}\\s*\\n\\s*sha512:\\s*(\\S+)\\s*\\n\\s*size:\\s*(\\d+)`).exec(yml)
+      if (!block) return send({ state: 'none' })
+      release = { tag_name: `v${latest}` }
+      asset = { name, sha512: block[1], size: Number(block[2]), browser_download_url: `https://github.com/${OWNER}/${REPO}/releases/download/v${latest}/${name}` }
       send({ state: 'available', version: latest })
     } catch (e) {
       send({ state: 'error', message: e.message })
@@ -91,7 +94,7 @@ function macUpdater(send, getState) {
       const res = await fetch(asset.browser_download_url, { redirect: 'follow' })
       if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`)
       const total = asset.size || Number(res.headers.get('content-length')) || 0
-      const hash = crypto.createHash('sha256')
+      const hash = crypto.createHash('sha512')
       const out = fs.createWriteStream(file)
       let loaded = 0, lastSent = 0
       for await (const chunk of res.body) {
@@ -102,8 +105,7 @@ function macUpdater(send, getState) {
       }
       await new Promise((resolve, reject) => out.end((e) => (e ? reject(e) : resolve())))
       if (total && loaded !== total) throw new Error('Download was incomplete. Please try again.')
-      const d = /^sha256:([0-9a-f]{64})$/i.exec(asset.digest || '')
-      if (d && hash.digest('hex') !== d[1].toLowerCase()) throw new Error('Download failed its integrity check. Please try again.')
+      if (asset.sha512 && hash.digest('base64') !== asset.sha512) throw new Error('Download failed its integrity check. Please try again.')
 
       // Unpack next to the installed app so the final swap is a same-volume rename.
       const target = installedApp()
