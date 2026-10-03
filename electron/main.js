@@ -17,7 +17,7 @@ function createWindow() {
     width: 1280, height: 820, minWidth: 900, minHeight: 560,
     title: 'Cloudpeek',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    backgroundColor: '#0f1115',
+    backgroundColor: '#000000',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   })
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
