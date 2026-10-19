@@ -192,8 +192,10 @@ async function sftpProvider(c) {
       hostHash: 'sha256',
       // Trust on first use: remember the server's fingerprint and refuse if it ever changes.
       hostVerifier: (hash) => {
-        const known = store.get(c.id).hostKey
-        if (known) return known === hash
+        let saved = null
+        try { saved = store.get(c.id) } catch { /* not saved yet: a first-time test */ }
+        if (!saved) return true
+        if (saved.hostKey) return saved.hostKey === hash
         store.save({ id: c.id, hostKey: hash })
         return true
       },
@@ -266,6 +268,7 @@ async function webdavProvider(c) {
 // ------------------------------------------------------------------ connection cache + operations
 const providers = new Map() // connId -> { sig, provider }
 async function provider(c) {
+  if (!c.id) throw new Error('Internal error: connection has no id')
   const sig = [c.protocol, c.host, c.port, c.username, c.password, c.share, c.basePath, c.secure, c.insecureTls, c.domain].join('|')
   const hit = providers.get(c.id)
   if (hit && hit.sig === sig) return hit.provider
@@ -277,7 +280,7 @@ async function provider(c) {
 const get = async (id) => provider(store.get(id))
 
 async function test(c) {
-  const full = { id: c.id || 'test-' + crypto.randomUUID(), ...c }
+  const full = { ...c, id: c.id || 'test-' + crypto.randomUUID() }
   const p = await provider(full)
   const items = await p.list('/')
   if (!c.id) { await p.close().catch(() => {}); providers.delete(full.id) }
