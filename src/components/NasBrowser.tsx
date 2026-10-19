@@ -4,6 +4,8 @@ import { call, fmtDate, fmtSize, kindOf, ICON_NAME } from '../util'
 import Icon, { type IconName } from './Icon'
 import Prompt, { type PromptReq } from './Prompt'
 import { useToast } from './Toast'
+import SortMenu, { type SortState } from './SortMenu'
+import { sortEntries, type SortBy } from '../sort'
 
 const parentOf = (p: string) => '/' + p.split('/').filter(Boolean).slice(0, -1).join('/')
 const joinP = (d: string, n: string) => (d === '/' ? '' : d) + '/' + n
@@ -32,6 +34,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
   const [ask, setAsk] = useState<PromptReq | null>(null)
   const [transfers, setTransfers] = useState<Record<string, Transfer>>({})
   const [drag, setDrag] = useState(false)
+  const [sort, setSort] = useState<SortState>({ by: 'name', dir: 1 })
   const cache = useRef(new Map<string, NasItem[]>())
   const reqId = useRef(0)
   const sidRef = useRef('')
@@ -98,9 +101,10 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
       const local = items.filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()) && (kind === 'all' || (kind === 'folders') === i.isFolder))
       return [...new Map([...local, ...found].map((i) => [i.path, i])).values()]
     }
-    return [...items].filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()) && (kind === 'all' || (kind === 'folders') === i.isFolder))
-      .sort((a, b) => Number(b.isFolder) - Number(a.isFolder) || a.name.localeCompare(b.name, undefined, { numeric: true }))
-  }, [items, found, filter, kind])
+    const wrapped = items.filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()) && (kind === 'all' || (kind === 'folders') === i.isFolder))
+      .map((i) => ({ type: i.isFolder ? ('folder' as const) : ('file' as const), name: i.name, size: i.size, date: i.mtime || '', item: i }))
+    return sortEntries(wrapped, sort.by, sort.dir).map((w) => w.item)
+  }, [items, found, filter, kind, sort])
 
   const selItems = shown.filter((i) => sel.has(i.path))
   const hasFolder = selItems.some((i) => i.isFolder)
@@ -141,6 +145,7 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
           <a onClick={() => setCwd('/')}><Icon name="db" size={14} /> {conn.name}</a>
           {crumbs.map((c, i) => <span key={i}><Icon name="chevR" size={12} className="muted" /><a onClick={() => setCwd('/' + crumbs.slice(0, i + 1).join('/'))}>{c}</a></span>)}
         </div>
+        <SortMenu value={sort} onChange={setSort} />
         <span className="chip">{(conn.protocol || '').toUpperCase()} · {conn.host}</span>
         <button className="icon-btn" title="Refresh" onClick={reload}><Icon name="refresh" className={loading ? 'spin' : ''} /></button>
       </div>
@@ -182,7 +187,11 @@ export default function NasBrowser({ conn }: { conn: Conn }) {
         )}
         {shown.length > 0 && (
           <table>
-            <thead><tr><th>Name</th><th className="num">Size</th><th className="date">Modified</th><th className="ra-h" /></tr></thead>
+            <thead><tr>
+              {([['name', 'Name', ''], ['size', 'Size', 'num'], ['date', 'Last modified', 'date']] as [SortBy, string, string][]).map(([by, label, cls]) => (
+                <th key={by} className={cls + ' sortable'} onClick={() => setSort((s) => (s.by === by ? { by, dir: (s.dir * -1) as 1 | -1 } : { by, dir: by === 'name' ? 1 : -1 }))}>{label}{sort.by === by && <Icon name={sort.dir === 1 ? 'sortUp' : 'sortDown'} size={12} />}</th>
+              ))}
+              <th className="ra-h" /></tr></thead>
             <tbody>
               {shown.map((it, i) => {
                 const k = it.isFolder ? 'folder' : kindOf(it.name)

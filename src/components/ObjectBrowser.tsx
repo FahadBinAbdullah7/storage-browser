@@ -6,12 +6,14 @@ import Preview from './Preview'
 import LinkDialog from './LinkDialog'
 import Prompt, { type PromptReq } from './Prompt'
 import Thumb from './Thumb'
+import SortMenu from './SortMenu'
+import { sortEntries } from '../sort'
 import InfoPanel from './InfoPanel'
 import UploadDone from './UploadDone'
 import { useToast } from './Toast'
 
 interface Entry { type: 'folder' | 'file'; key: string; name: string; size: number; date: string }
-type SortBy = 'name' | 'size' | 'date'
+type SortBy = import('../sort').SortBy
 
 const lsGet = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
 const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } }
@@ -57,7 +59,12 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   const [drag, setDrag] = useState(false)
   const [ask, setAsk] = useState<PromptReq | null>(null)
   const [view, setView] = useState<'list' | 'grid'>(lsGet('view', 'list') as 'list' | 'grid')
-  const [sort, setSort] = useState<{ by: SortBy; dir: 1 | -1 }>({ by: 'name', dir: 1 })
+  const [sort, setSortRaw] = useState<{ by: SortBy; dir: 1 | -1 }>(() => {
+    try { const v = JSON.parse(lsGet('sort', '')); if (['name', 'size', 'date'].includes(v.by) && (v.dir === 1 || v.dir === -1)) return v } catch { /* default */ }
+    return { by: 'name', dir: 1 }
+  })
+  const setSort = (v: { by: SortBy; dir: 1 | -1 } | ((p: { by: SortBy; dir: 1 | -1 }) => { by: SortBy; dir: 1 | -1 })) =>
+    setSortRaw((p) => { const n = typeof v === 'function' ? v(p) : v; lsSet('sort', JSON.stringify(n)); return n })
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const reqId = useRef(0)
   const lastIdx = useRef(0)
@@ -262,11 +269,12 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
     const fil = deepRes ? [...files, ...deepRes.files] : files
     if (kind !== 'files') for (const x of fl) { if (!f || x.name.toLowerCase().includes(f)) fo.push({ type: 'folder', key: x.prefix, name: x.name, size: 0, date: '' }) }
     if (kind !== 'folders') for (const x of fil) { if (!f || x.name.toLowerCase().includes(f)) fi.push({ type: 'file', key: x.key, name: x.name, size: x.size, date: x.lastModified || '' }) }
-    // S3 already returns keys in name order, so the default view needs no sorting at all.
-    if (sort.by === 'name') { if (sort.dir === -1) { fo.reverse(); fi.reverse() } }
-    else fi.sort(sort.by === 'size' ? (a, b) => (a.size - b.size) * sort.dir : (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * sort.dir)
-    return fo.length ? fo.concat(fi) : fi
-  }, [folders, files, deepRes, dFilter, sort, kind])
+    const list = fo.length ? fo.concat(fi) : fi
+    // While a huge folder is still streaming in, keep the server's order (re-sorting 300,000 items on every update would
+    // stall the window); it is sorted once the listing is complete.
+    if (loadingMore && list.length > 40000) return list
+    return sortEntries(list, sort.by, sort.dir)
+  }, [folders, files, deepRes, dFilter, sort, kind, loadingMore])
 
   const ROW_H = 41
   const vStart = Math.max(0, Math.floor(scrollTop / ROW_H) - 12)
@@ -423,7 +431,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
   })
   useEffect(() => { const c = () => setMenu(null); window.addEventListener('click', c); return () => window.removeEventListener('click', c) }, [])
 
-  const toggleSort = (by: SortBy) => setSort((s) => (s.by === by ? { by, dir: (s.dir * -1) as 1 | -1 } : { by, dir: 1 }))
+  const toggleSort = (by: SortBy) => setSort((s) => (s.by === by ? { by, dir: (s.dir * -1) as 1 | -1 } : { by, dir: by === 'name' ? 1 : -1 }))
   const SortHead = ({ by, label, cls = '' }: { by: SortBy; label: string; cls?: string }) => (
     <th className={cls + ' sortable'} onClick={() => toggleSort(by)}>{label}{sort.by === by && <Icon name={sort.dir === 1 ? 'sortUp' : 'sortDown'} size={12} />}</th>
   )
@@ -491,6 +499,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
           <a onClick={() => setPrefix('')}><Icon name="bucket" size={14} /> {bucket}</a>
           {crumbs.map((c, i) => <span key={i}><Icon name="chevR" size={12} className="muted" /><a onClick={() => setPrefix(crumbs.slice(0, i + 1).join('/') + '/')}>{c}</a></span>)}
         </div>
+        <SortMenu value={sort} onChange={setSort} />
         <div className="seg">
           <button className={view === 'list' ? 'on' : ''} title="List" onClick={() => { setView('list'); lsSet('view', 'list') }}><Icon name="list" /></button>
           <button className={view === 'grid' ? 'on' : ''} title="Grid" onClick={() => { setView('grid'); lsSet('view', 'grid') }}><Icon name="grid" /></button>
@@ -544,7 +553,7 @@ export default function ObjectBrowser({ conn, onChanged }: { conn: Conn; onChang
 
         {entries.length > 0 && view === 'list' && (
           <table className="vt">
-            <thead><tr><SortHead by="name" label="Name" /><SortHead by="size" label="Size" cls="num" /><SortHead by="date" label="Modified" cls="date" /><th className="ra-h" /></tr></thead>
+            <thead><tr><SortHead by="name" label="Name" /><SortHead by="size" label="Size" cls="num" /><SortHead by="date" label="Last modified" cls="date" /><th className="ra-h" /></tr></thead>
             <tbody>
               {vStart > 0 && <tr aria-hidden="true" className="vsp"><td colSpan={4} style={{ height: vStart * ROW_H }} /></tr>}
               {entries.slice(vStart, vEnd).map((e, j) => { const i = vStart + j; return (

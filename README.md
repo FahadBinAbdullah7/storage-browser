@@ -121,7 +121,7 @@ Click **＋ → NAS**, pick how your NAS shares files, and sign in with its **us
 ## What you can do
 
 **Files and folders**
-- Browse buckets and folders with breadcrumbs, **list or grid view**, sorting, and a live filter
+- Browse buckets and folders with breadcrumbs, **list or grid view**, and a live filter. **Sort** by name, size or last modified (ascending or descending) from the Sort button or by clicking a column heading; folders always come first, and names sort without regard to capitals and with numbers in natural order (file2 before file10)
 - **Thumbnails** for images and videos in grid view
 - **Preview and play** video, audio, images, PDFs and text files; use ← → to move through a folder; Esc to close
 - **Instant folders**: a folder is read in many parallel pieces, so all its sub-folders appear within a couple of seconds even among tens of thousands of files, and only the rows on screen are drawn. Every folder you open is also remembered on your computer, so the next time (even after restarting the app) its sub-folders are there instantly while the list refreshes quietly in the background
