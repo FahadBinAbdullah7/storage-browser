@@ -15,9 +15,19 @@ const store = require('./store')
 // Remote paths are POSIX-style ("/Movies/a.mp4") and always relative to the share / base path.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Command output can echo the connection URL ("//user:password@host/share"), so passwords are always removed from errors.
+function redact(text, secrets = []) {
+  let t = String(text).replace(/(\/\/)[^\s/@:]+:[^\s/@]*@/g, '$1***@')
+  for (const x of secrets) {
+    if (!x) continue
+    for (const v of new Set([x, encodeURIComponent(x)])) t = t.split(v).join('***')
+  }
+  return t
+}
 const run = (cmd, args, opts = {}) => new Promise((resolve, reject) => {
-  execFile(cmd, args, { timeout: 30000, ...opts }, (err, stdout, stderr) => {
-    if (err) reject(new Error((stderr || stdout || err.message).toString().trim() || err.message))
+  const { secrets, ...execOpts } = opts
+  execFile(cmd, args, { timeout: 30000, ...execOpts }, (err, stdout, stderr) => {
+    if (err) reject(new Error(redact((stderr || stdout || err.message).toString().trim() || err.message, secrets)))
     else resolve(stdout.toString())
   })
 })
@@ -49,46 +59,79 @@ async function discover(ms = 4000) {
 
 // ------------------------------------------------------------------ SMB (through the operating system)
 // Mounting with the OS supports every SMB version/signing mode NAS boxes use.
-const mounts = new Map() // connId -> root folder
+const mounts = new Map() // connId -> { root, owned }  (owned = mounted by Cloudpeek, so Cloudpeek unmounts it)
 
 const smbUser = (c) => (c.domain ? `${c.domain};${c.username}` : c.username)
 
+// macOS refuses to mount the same share twice ("File exists"). If it is already mounted — in Finder, or left over from
+// an earlier run — use that mount instead.
+function findExistingMount(listing, c, share) {
+  const wantHost = String(c.host).toLowerCase()
+  const wantShare = share.toLowerCase()
+  const wantUser = String(c.username || '').toLowerCase()
+  for (const line of String(listing).split('\n')) {
+    const m = /^\/\/(?:([^@/]+)@)?([^/]+)\/(.+?) on (.+?) \(smbfs/.exec(line)
+    if (!m) continue
+    const dec = (x) => { try { return decodeURIComponent(x) } catch { return x } }
+    const user = dec(m[1] || '').toLowerCase().replace(/^.*[;\\]/, '')
+    const host = dec(m[2]).toLowerCase().replace(/:\d+$/, '')
+    if (host === wantHost && dec(m[3]).toLowerCase() === wantShare && (!user || user === wantUser.replace(/^.*[;\\]/, ''))) return m[4]
+  }
+  return null
+}
+
 async function smbMount(c) {
-  if (mounts.has(c.id)) return mounts.get(c.id)
+  if (mounts.has(c.id)) return mounts.get(c.id).root
   const share = String(c.share || '').replace(/^\/+|\/+$/g, '')
   if (!share) throw new Error('Enter the share name (for example "video" or "home").')
   if (process.platform === 'win32') {
     const unc = `\\\\${c.host}\\${share}`
-    await run('net', ['use', unc, c.password, `/user:${c.domain ? c.domain + '\\' : ''}${c.username}`, '/persistent:no'])
-    mounts.set(c.id, unc)
+    await run('net', ['use', unc, c.password, `/user:${c.domain ? c.domain + '\\' : ''}${c.username}`, '/persistent:no'], { secrets: [c.password] })
+    mounts.set(c.id, { root: unc, owned: true })
     return unc
   }
   if (process.platform !== 'darwin') throw new Error('SMB is supported on macOS and Windows. Use SFTP or WebDAV on this system.')
   const mp = path.join(app.getPath('userData'), 'mnt', c.id)
-  fs.mkdirSync(mp, { recursive: true })
-  const listed = await run('mount', [])
-  if (!listed.includes(` on ${mp} `)) {
-    const url = `//${encodeURIComponent(smbUser(c))}:${encodeURIComponent(c.password)}@${c.host}${c.port && Number(c.port) !== 445 ? ':' + Number(c.port) : ''}/${encodeURIComponent(share)}`
-    await run('mount_smbfs', [url, mp])
+  const existing = findExistingMount(await run('mount', []), c, share)
+  if (existing) {
+    // Mounted by Finder (or by an earlier Cloudpeek run, if it lives in our own folder).
+    mounts.set(c.id, { root: existing, owned: existing.startsWith(path.join(app.getPath('userData'), 'mnt')) })
+    try { fs.rmdirSync(mp) } catch { /* not there / not empty */ }
+    return existing
   }
-  mounts.set(c.id, mp)
+  fs.mkdirSync(mp, { recursive: true })
+  const url = `//${encodeURIComponent(smbUser(c))}:${encodeURIComponent(c.password)}@${c.host}${c.port && Number(c.port) !== 445 ? ':' + Number(c.port) : ''}/${encodeURIComponent(share)}`
+  try {
+    await run('mount_smbfs', [url, mp], { secrets: [c.password] })
+  } catch (e) {
+    // Lost a race with another mount of the same share: use that one.
+    const again = /File exists/i.test(e.message) ? findExistingMount(await run('mount', []), c, share) : null
+    if (!again) {
+      try { fs.rmdirSync(mp) } catch { /* ignore */ }
+      throw /File exists/i.test(e.message) ? new Error('This share is already connected on this Mac under a different login. Disconnect it in Finder (eject it) and try again.') : e
+    }
+    mounts.set(c.id, { root: again, owned: false })
+    try { fs.rmdirSync(mp) } catch { /* ignore */ }
+    return again
+  }
+  mounts.set(c.id, { root: mp, owned: true })
   return mp
 }
 
 async function smbUnmount(c) {
-  const root = mounts.get(c.id)
+  const m = mounts.get(c.id)
   mounts.delete(c.id)
-  if (!root) return
+  if (!m || !m.owned) return // a share mounted in Finder stays mounted
   try {
-    if (process.platform === 'win32') await run('net', ['use', root, '/delete', '/y'])
-    else { await run('umount', [root]); fs.rmdirSync(root) }
+    if (process.platform === 'win32') await run('net', ['use', m.root, '/delete', '/y'])
+    else { await run('umount', [m.root]); fs.rmdirSync(m.root) }
   } catch { /* already gone */ }
 }
 
 async function smbShares(input) {
   if (process.platform === 'win32') {
     const ipc = `\\\\${input.host}\\IPC$`
-    await run('net', ['use', ipc, input.password, `/user:${input.domain ? input.domain + '\\' : ''}${input.username}`, '/persistent:no'])
+    await run('net', ['use', ipc, input.password, `/user:${input.domain ? input.domain + '\\' : ''}${input.username}`, '/persistent:no'], { secrets: [input.password] })
     try {
       const out = await run('net', ['view', `\\\\${input.host}`])
       return out.split(/\r?\n/).map((l) => /^(\S.*?)\s{2,}Disk\b/.exec(l)?.[1]).filter(Boolean)
@@ -96,7 +139,7 @@ async function smbShares(input) {
   }
   if (process.platform !== 'darwin') return []
   const url = `//${encodeURIComponent(smbUser(input))}:${encodeURIComponent(input.password)}@${input.host}`
-  const out = await run('smbutil', ['view', '-N', url])
+  const out = await run('smbutil', ['view', '-N', url], { secrets: [input.password] })
   return out.split('\n').map((l) => /^(\S.*?)\s{2,}Disk\b/.exec(l)?.[1]).filter((n) => n && !n.endsWith('$'))
 }
 
@@ -414,4 +457,4 @@ async function previewUrl(id, remote) {
   return `http://127.0.0.1:${port}/n/${id}?${new URLSearchParams({ k: secret, p: remote })}`
 }
 
-module.exports = { discover, smbShares, test, list, mkdir, rename, remove, search, cancelSearch, upload, download, previewUrl, disconnect, closeAll }
+module.exports = { _t: { redact, findExistingMount }, discover, smbShares, test, list, mkdir, rename, remove, search, cancelSearch, upload, download, previewUrl, disconnect, closeAll }
